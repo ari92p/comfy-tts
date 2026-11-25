@@ -120,17 +120,23 @@ def quiet_run(cmd):
         die("setup failed:\n" + "\n".join(r.stdout.strip().splitlines()[-25:]))
 
 
+def install_uv():
+    """No uv on this computer: install it into .venvs/uv (inside this folder, nothing global)."""
+    home = VENVS / "uv"
+    exe = home / ("Scripts" if IS_WIN else "bin") / ("uv.exe" if IS_WIN else "uv")
+    if not exe.exists():
+        status("Installing uv (the Python setup tool, first time only)...")
+        quiet_run([sys.executable, "-m", "venv", str(home)])
+        quiet_run([str(exe.with_name("python.exe" if IS_WIN else "python")), "-m", "pip", "install", "-q", "uv"])
+    return str(exe)
+
+
 def ensure_env(model, hw, assume_yes):
     """Create the private virtualenv for this model's backend on first use."""
     backend = MODELS[model]["backend"]
     if env_ready(backend):
         return
-    uv = shutil.which("uv")
-    if not uv:
-        die("`uv` is needed once to set up the Python environment (it also fetches the right Python version).\n"
-            "  macOS/Linux: curl -LsSf https://astral.sh/uv/install.sh | sh      (or: brew install uv)\n"
-            "  Windows:     powershell -c \"irm https://astral.sh/uv/install.ps1 | iex\"\n"
-            "Then run this command again.")
+    uv = shutil.which("uv") or install_uv()
     status("Setting up (first time only, a few minutes)...")
     venv = VENVS / backend
     if venv.exists():

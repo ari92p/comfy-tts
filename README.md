@@ -20,8 +20,7 @@ The first run also sets everything up and downloads the models (about 6 GB), onc
 
 On Windows use `python` instead of `python3`. Want a plain `easy-tts` command? On Mac and Linux: `chmod +x easy-tts.py && ln -s "$PWD/easy-tts.py" ~/.local/bin/easy-tts` (the examples below use it; with the file alone, write `python3 easy-tts.py` instead).
 
-You need Python 3.9+, [`uv`](https://docs.astral.sh/uv/) (`brew install uv`, or `curl -LsSf https://astral.sh/uv/install.sh | sh`,
-on Windows `irm https://astral.sh/uv/install.ps1 | iex`) and a GPU: an NVIDIA card or a Mac with Apple Silicon.
+You need Python 3.9+ and a GPU: an NVIDIA card or a Mac with Apple Silicon. Everything else (the Python setup tool `uv`, the packages, the models) is installed by the first run, inside this folder.
 
 ## Run it as command
 
