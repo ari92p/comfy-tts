@@ -1,11 +1,11 @@
-"""Voice service: Qwen3-TTS (voice clone + built-in speakers) and Whisper (transcript of a sample) as a small HTTP API.
+"""Voice service: Qwen3-TTS (voice cloning) and Whisper (transcript of a sample) as a small HTTP API.
 
 Started by `python3 tts.py --serve` (inside the Qwen environment of this repo). Same HTTP API as the Studio's voice service.
 Restrict who may reach it with a firewall rule; there is no login. One job at a time; a model is loaded on first
 use and dropped from the GPU again after IDLE_SECONDS without a request, because the card is shared with ComfyUI.
 
     GET    /health                      state, loaded models
-    GET    /speakers                    built-in speakers (CustomVoice)
+    GET    /speakers                    always an empty list (there are no built-in speakers, only cloned voices)
     GET    /voices                      saved voices:  [{name, title, text, seconds, created}]
     GET    /voices/{name}/ref           the reference (all enabled samples joined) as WAV
     PATCH  /voices/{name}               json {title}: rename (the name used in URLs and personas stays)
@@ -13,7 +13,7 @@ use and dropped from the GPU again after IDLE_SECONDS without a request, because
     PUT    /voices/{name}               form: audio (file), text (optional, else Whisper), title, overwrite=1
     DELETE /voices/{name}
     POST   /transcribe                  form: audio (file), language (optional)  ->  {text, language, seconds}
-    POST   /generate                    json: {text, voice | speaker, language, instruct, seed, ...}  ->  audio/wav
+    POST   /generate                    json: {text, voice, language, seed, ...}  ->  audio/wav
 
 Settings found by trial and error with Qwen3-TTS: repetition_penalty 1.05, never do_sample=False (endless
 babble), voices are not post-processed. Against hangs every generation gets max_new_tokens (at most 1024) and max_time, and a
@@ -52,15 +52,9 @@ from pydantic import BaseModel  # noqa: E402
 
 VOICES = pathlib.Path(os.environ.get("VOICE_DIR") or pathlib.Path(__file__).resolve().parent.parent / "voices")
 IDLE_SECONDS = int(os.environ.get("VOICE_IDLE_SECONDS", "300"))
-MODELS = {"clone": "Qwen/Qwen3-TTS-12Hz-1.7B-Base", "custom": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"}
+MODELS = {"clone": "Qwen/Qwen3-TTS-12Hz-1.7B-Base"}
 WHISPER = os.environ.get("VOICE_WHISPER", "large-v3-turbo")   # e.g. "small" for a much smaller download
-SPEAKERS = [
-    {"name": "aiden", "note": "Englisch, Mann (US)"}, {"name": "ryan", "note": "Englisch, Mann"},
-    {"name": "dylan", "note": "Chinesisch (Peking), Mann"}, {"name": "eric", "note": "Chinesisch (Sichuan), Mann"},
-    {"name": "uncle_fu", "note": "Chinesisch, älterer Mann"}, {"name": "vivian", "note": "Chinesisch, Frau"},
-    {"name": "serena", "note": "Chinesisch, Frau"}, {"name": "ono_anna", "note": "Japanisch, Frau"},
-    {"name": "sohee", "note": "Koreanisch, Frau"},
-]
+SPEAKERS = []                 # no built-in speakers: only the Base model is used, which clones voices
 LANGUAGES = ("Auto", "English", "German", "French", "Spanish", "Italian", "Portuguese", "Russian", "Chinese", "Japanese", "Korean")
 WHISPER_LANGS = {"English": "en", "German": "de", "French": "fr", "Spanish": "es", "Italian": "it", "Portuguese": "pt",
                  "Russian": "ru", "Chinese": "zh", "Japanese": "ja", "Korean": "ko"}
@@ -73,7 +67,7 @@ TEXT_MAX = 1000                # characters; MAX_TOKENS is about 80 s of speech
 
 app = FastAPI(title="Voice")
 JOB = threading.Lock()         # one job at a time (GPU shared with ComfyUI)
-_models = {}                   # "clone" | "custom" | "whisper" -> loaded model
+_models = {}                   # "clone" | "whisper" -> loaded model
 _used = [time.time()]
 _started = [0.0]               # start of the running job (0 = none), watched by the watchdog
 
@@ -109,8 +103,8 @@ def prefetch():
     no feedback and the watchdog (HARD_SECONDS) would end a slow download half way. Already cached models cost nothing."""
     if os.environ.get("HF_HUB_OFFLINE") == "1":
         return
-    log("checking models (the first start downloads about 9 GB, once; the progress bars below show it)")
-    for kind in ("clone", "custom"):
+    log("checking models (the first start downloads about 4.7 GB, once; the progress bars below show it)")
+    for kind in ("clone",):
         try:
             fetch(MODELS[kind])
         except Exception as e:  # noqa: BLE001
@@ -575,9 +569,9 @@ def transcribe(audio: UploadFile = File(...), language: str = Form("")):
 class Gen(BaseModel):
     text: str
     voice: str = ""              # saved voice (clone) ...
-    speaker: str = ""            # ... or built-in speaker
+    speaker: str = ""            # no longer supported (kept so older clients get a clear answer)
     language: str = "English"
-    instruct: str = ""           # speaking style for built-in speakers
+    instruct: str = ""           # ignored
     seed: int | None = None
     repetition_penalty: float = 1.05
     temperature: float | None = None
@@ -593,15 +587,13 @@ def generate(g: Gen):
         raise HTTPException(400, f"Der Text ist zu lang (höchstens {TEXT_MAX} Zeichen)")
     if g.language not in LANGUAGES:
         raise HTTPException(400, "Unbekannte Sprache")
-    if bool(g.voice) == bool(g.speaker):
-        raise HTTPException(400, "Entweder eine Voice oder einen Sprecher angeben")
-    if g.speaker and g.speaker not in {s["name"] for s in SPEAKERS}:
-        raise HTTPException(400, "Unbekannter Sprecher")
-    d = None
-    if g.voice:
-        d = voice_dir(g.voice)
-        if not voice_info(d):
-            raise HTTPException(404, "Voice nicht gefunden")
+    if g.speaker:
+        raise HTTPException(400, "Eingebaute Sprecher gibt es in diesem Dienst nicht, bitte eine gespeicherte Voice angeben")
+    if not g.voice:
+        raise HTTPException(400, "Keine Voice angegeben")
+    d = voice_dir(g.voice)
+    if not voice_info(d):
+        raise HTTPException(404, "Voice nicht gefunden")
 
     # cap against endless babble: ~0.2 s per character is far more than any real reading speed, never more than MAX_TOKENS
     tokens = min(MAX_TOKENS, int(max(8.0, len(text) * 0.2 + 5) * 12.5))
@@ -615,12 +607,7 @@ def generate(g: Gen):
     t0 = time.time()
     with job():
         torch.manual_seed(seed)
-        if d:
-            m = model("clone")
-            wavs, sr = m.generate_voice_clone(text=[text], language=[lang], voice_clone_prompt=voice_prompt(d), **kw)
-        else:
-            wavs, sr = model("custom").generate_custom_voice(text=[text], speaker=[g.speaker], language=[lang],
-                                                             instruct=[g.instruct.strip() or None], **kw)
+        wavs, sr = model("clone").generate_voice_clone(text=[text], language=[lang], voice_clone_prompt=voice_prompt(d), **kw)
     w = np.asarray(wavs[0], dtype="float32")
     seconds = len(w) / sr
     if time.time() - t0 >= JOB_SECONDS - 1:
@@ -630,7 +617,7 @@ def generate(g: Gen):
     peak = float(np.abs(w).max()) if len(w) else 0.0
     if peak < 0.01:
         raise HTTPException(422, "Es kam kein Ton heraus. Bitte neu versuchen")
-    log(f"generate {'voice ' + g.voice if d else 'speaker ' + g.speaker}: {len(text)} chars -> {seconds:.1f}s in {time.time() - t0:.1f}s (seed {seed})")
+    log(f"generate voice {g.voice}: {len(text)} chars -> {seconds:.1f}s in {time.time() - t0:.1f}s (seed {seed})")
     return Response(to_wav(w, sr), media_type="audio/wav",
                     headers={"X-Seconds": f"{seconds:.2f}", "X-Seed": str(seed), "X-Peak": f"{peak:.3f}",
                              "X-Elapsed": f"{time.time() - t0:.1f}"})

@@ -6,8 +6,6 @@
       transcript DIR/ref.txt (given by --ref-text, or heard by Whisper).
   engine.py speak --model REPO --voice-dir DIR --text-file F --out OUT.wav [--lang de] [--seed N]
       Reads DIR/ref.wav and speaks the text in that cloned voice.
-  engine.py speak --model REPO --speaker NAME [--style "..."] --text-file F --out OUT.wav
-      Speaks the text with one of the built-in speakers of the Qwen3-TTS CustomVoice model (no reference needed).
 
 Settings that come from a lot of trial and error with Qwen3-TTS: repetition_penalty 1.05, never greedy decoding (it babbles
 forever), a hard cap on generated tokens (a missing end-of-speech token otherwise runs for minutes), no post-processing of
@@ -165,9 +163,9 @@ def split_text(text, maxc):
 # ---------- models ----------
 
 class Qwen:
-    """Qwen3-TTS. With `speaker`: a built-in speaker (CustomVoice model). Otherwise: the cloned voice in `voice_dir` (Base model)."""
+    """Qwen3-TTS Base model: speaks with the cloned voice in `voice_dir`."""
 
-    def __init__(self, repo, device, lang, voice_dir=None, speaker="", style=""):
+    def __init__(self, repo, device, lang, voice_dir):
         import torch
         from qwen_tts import Qwen3TTSModel
         dtype = torch.bfloat16 if device.startswith("cuda") else torch.float32   # bf16 is only safe on CUDA
@@ -177,12 +175,6 @@ class Qwen:
         log(f"Model loaded in {time.time() - t:.0f} s")
         self.lang = QWEN_LANGS.get(lang, "Auto")
         self.per_char = 0.5 if lang in CJK else 0.2
-        self.speaker, self.style = speaker.lower(), style.strip()
-        if self.speaker:
-            known = self.model.get_supported_speakers() or []
-            if self.speaker not in known:
-                die(f"unknown speaker '{speaker}'. Available: {', '.join(known)}")
-            return
         ref = voice_dir / "ref.wav"
         txt = voice_dir / "ref.txt"
         if txt.exists() and txt.read_text(encoding="utf-8").strip():
@@ -205,11 +197,7 @@ class Qwen:
         tokens = min(1024, int(max(8.0, len(text) * self.per_char + 5) * 12.5))   # 12.5 tokens per second of speech
         kw = {"repetition_penalty": 1.05, "max_new_tokens": tokens, "max_time": 180.0}
         torch.manual_seed(seed)
-        if self.speaker:
-            wavs, sr = self.model.generate_custom_voice(text=[text], speaker=[self.speaker], language=[self.lang],
-                                                        instruct=[self.style or None], **kw)
-        else:
-            wavs, sr = self.model.generate_voice_clone(text=[text], language=[self.lang], voice_clone_prompt=self.prompt, **kw)
+        wavs, sr = self.model.generate_voice_clone(text=[text], language=[self.lang], voice_clone_prompt=self.prompt, **kw)
         w = np.asarray(wavs[0], dtype="float32")
         return w, sr, len(w) / sr >= (tokens / 12.5) * 0.97   # True = hit the cap, i.e. it ran away
 
@@ -218,14 +206,14 @@ def speak(a):
     import numpy as np
     import soundfile as sf
     voice_dir = pathlib.Path(a.voice_dir) if a.voice_dir else None
-    if not a.speaker and not (voice_dir and (voice_dir / "ref.wav").exists()):
+    if not (voice_dir and (voice_dir / "ref.wav").exists()):
         die(f"{voice_dir}/ref.wav is missing. Run prepare first (tts.py does this for you).")
     text = pathlib.Path(a.text_file).read_text(encoding="utf-8").strip()
     if not text:
         die("the text is empty")
     lang = a.lang.lower()
     device = pick_device(a.device)
-    engine = Qwen(a.model, device, lang, voice_dir, a.speaker, a.style)
+    engine = Qwen(a.model, device, lang, voice_dir)
     chunks = split_text(text, CHUNK_CHARS // 2 if lang in CJK else CHUNK_CHARS)
     seed = a.seed if a.seed is not None else random.randrange(1, 2**31)
     log(f"Speaking {len(text)} characters in {len(chunks)} piece(s), seed {seed}")
@@ -263,9 +251,7 @@ def main():
     p.add_argument("--lang", default="auto")
     s = sub.add_parser("speak")
     s.add_argument("--model", default="")
-    s.add_argument("--voice-dir", default="")
-    s.add_argument("--speaker", default="")
-    s.add_argument("--style", default="")
+    s.add_argument("--voice-dir", required=True)
     s.add_argument("--text-file", required=True)
     s.add_argument("--out", required=True)
     s.add_argument("--lang", default="auto")

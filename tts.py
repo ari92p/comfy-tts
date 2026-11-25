@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""tts: text to speech on your own computer, with built-in speakers or a voice cloned from a short recording.
+"""tts: text to speech on your own computer with a voice cloned from a short recording.
 
   python3 tts.py                                    guided mode: asks a few questions, helps you pick a model
-  python3 tts.py --speaker ryan --text "Hello!"     built-in speaker, one command, no questions
-  python3 tts.py --clone me.wav --text "Hello!"     your own cloned voice (writes out/me-<time>.wav)
+  python3 tts.py --clone me.wav --text "Hello!"     clone your voice from a recording (writes out/me-<time>.wav)
+  python3 tts.py --voice me --text "Hello again!"   use a voice you saved earlier
 
 Run with --help for all options. This file only needs a plain Python 3.9+; the models run in private virtualenvs
 (.venvs/) that are created for you on first use, see README.md.
@@ -31,18 +31,11 @@ IS_WIN = os.name == "nt"
 QWEN_LANGS = ["en", "de", "fr", "es", "it", "pt", "ru", "zh", "ja", "ko"]
 MODELS = {
     "qwen3-tts-1.7b": {
-        "backend": "qwen", "repo": "Qwen/Qwen3-TTS-12Hz-1.7B-Base", "speaker_repo": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice", "langs": QWEN_LANGS, "python": "3.12",
+        "backend": "qwen", "repo": "Qwen/Qwen3-TTS-12Hz-1.7B-Base", "langs": QWEN_LANGS, "python": "3.12",
         "title": "Qwen3-TTS 1.7B",
-        "note": "the largest Qwen3-TTS model: built-in speakers and cloning, 10 languages; needs a GPU (NVIDIA 8+ GB or an Apple Silicon Mac)",
+        "note": "the largest Qwen3-TTS model, clones a voice, 10 languages; needs a GPU (NVIDIA 8+ GB or an Apple Silicon Mac)",
     },
 }
-# Built-in speakers of the Qwen3-TTS CustomVoice models. Each is native in one language and speaks the others with an accent.
-SPEAKERS = [
-    ("aiden", "English (US), man"), ("ryan", "English, man"), ("vivian", "Chinese, woman"), ("serena", "Chinese, woman"),
-    ("uncle_fu", "Chinese, older man"), ("dylan", "Chinese (Beijing), man"), ("eric", "Chinese (Sichuan), man"),
-    ("ono_anna", "Japanese, woman"), ("sohee", "Korean, woman"),
-]
-DEFAULT_SPEAKER = {"en": "aiden", "zh": "vivian", "ja": "ono_anna", "ko": "sohee"}
 LANG_NAMES = {"en": "English", "de": "German", "fr": "French", "es": "Spanish", "it": "Italian", "pt": "Portuguese",
               "ru": "Russian", "zh": "Chinese", "ja": "Japanese", "ko": "Korean"}
 
@@ -206,16 +199,13 @@ def prepare_voice(model, voice_dir, ref, ref_text, lang):
     engine(model, args)
 
 
-def speak(model, voice_dir, text, out, lang, seed, device, speaker="", style=""):
+def speak(model, voice_dir, text, out, lang, seed, device):
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as f:
         f.write(text)
         tmp = f.name
     try:
         args = ["speak", "--text-file", tmp, "--out", str(out), "--lang", lang, "--device", device]
-        if speaker:
-            args += ["--model", MODELS[model]["speaker_repo"], "--speaker", speaker, "--style", style]
-        else:
-            args += ["--model", MODELS[model]["repo"], "--voice-dir", str(voice_dir)]
+        args += ["--model", MODELS[model]["repo"], "--voice-dir", str(voice_dir)]
         if seed is not None:
             args += ["--seed", str(seed)]
         engine(model, args)
@@ -242,11 +232,6 @@ def finish_output(wav, out):
 
 # ---------- headless ----------
 
-def check_speaker(model, lang, speaker):
-    if speaker.lower() not in [n for n, _ in SPEAKERS]:
-        die(f"unknown speaker '{speaker}'. Available: {', '.join(n for n, _ in SPEAKERS)}")
-
-
 def headless(a, hw):
     lang = a.lang.lower()
     model = a.model if a.model != "auto" else recommend(lang, hw)
@@ -255,11 +240,8 @@ def headless(a, hw):
     text = a.text if a.text is not None else pathlib.Path(clean_path(a.text_file)).read_text(encoding="utf-8")
     if not text.strip():
         die("the text is empty")
-    ref, voice_dir = "", None
-    if a.speaker:
-        check_speaker(model, lang, a.speaker)
-        label = a.speaker.lower()
-    elif a.voice:
+    ref = ""
+    if a.voice:
         voice_dir = VOICES / voice_name(a.voice)
         if not (voice_dir / "ref.wav").exists():
             die(f"no saved voice called '{a.voice}'. Saved voices: {', '.join(saved_voices()) or 'none yet'}")
@@ -276,71 +258,46 @@ def headless(a, hw):
     ensure_env(model, hw, a.yes or not sys.stdin.isatty())
     if ref:
         prepare_voice(model, voice_dir, ref, a.clone_text, lang)
-    speak(model, voice_dir, text, wav, lang, a.seed, a.device, a.speaker, a.style)
+    speak(model, voice_dir, text, wav, lang, a.seed, a.device)
     finish_output(wav, out)
     say(f"\nSaved: {out}")
 
 
 # ---------- guided mode ----------
 
-def pick_model(lang, hw, speaker_mode):
-    model = recommend(lang, hw)
-    say(f"\nModel: {MODELS[model]['title']} ({MODELS[model]['note']})")
-    return model
-
-
 def guided(hw):
     say("\n=== tts: guided mode ===")
-    say("I'll ask a few questions, set things up and generate your first clip.")
+    say("I'll ask a few questions, set things up and clone your voice for a first clip.")
     say("At the end I print the one-line command that does the same without questions.\n")
     say(f"Your computer: {describe(hw)}\n")
 
-    say("1) Which voice?")
-    say("   1. A built-in speaker (no recording needed)")
-    say("   2. My own voice, or any voice I have a recording of (cloning)")
-    speaker_mode = ask("   Number", "1") != "2"
-
-    lang = ask("\n2) Which language will the spoken text be in? (code, e.g. en, de, fr, es)", "en").lower()
+    lang = ask("1) Which language will the spoken text be in? (code, e.g. en, de, fr, es)", "en").lower()
     if lang not in QWEN_LANGS:
         say(f"   '{lang}' is not supported here. Supported: {', '.join(QWEN_LANGS)}")
         lang = "en"
-    if speaker_mode and lang not in DEFAULT_SPEAKER:
-        say(f"   Note: every built-in speaker is native in English, Chinese, Japanese or Korean and speaks {LANG_NAMES.get(lang, lang)} with an accent.")
-        say("   For a natural voice in that language, choose cloning with a recording of a native speaker.")
-    model = pick_model(lang, hw, speaker_mode)
+    model = recommend(lang, hw)
 
-    speaker, style, voice, ref, label = "", "", "", "", ""
-    if speaker_mode:
-        say("\n3) Pick a speaker:")
-        for i, (n, note) in enumerate(SPEAKERS, 1):
-            say(f"   {i}. {n}: {note}")
-        d = DEFAULT_SPEAKER.get(lang, "ryan")
-        pick = ask("   Number or name", d)
-        names = [n for n, _ in SPEAKERS]
-        speaker = names[int(pick) - 1] if pick.isdigit() and 1 <= int(pick) <= len(names) else (pick.lower() if pick.lower() in names else d)
-        style = ask("   Optional: how should it speak? (e.g. \"slowly and sadly\", \"excited\", or Enter to skip)", "")
-        voice_dir = None
-    else:
-        voices = saved_voices()
-        if voices:
-            say(f"\n3) Saved voices: {', '.join(voices)}")
-            voice = ask("   Type one of these names to reuse it, or press Enter to use a new recording", "")
-            voice = voice_name(voice) if voice_name(voice) in voices else ""
-        if not voice:
-            say("\n3) Your reference recording: 5 to 15 seconds of one person speaking clearly, no music or background noise.")
-            say("   Any audio file works (wav, mp3, m4a, ...). Drag the file into this window or type its path.")
-            while True:
-                ref = clean_path(ask("   File:"))
-                if os.path.isfile(ref):
-                    break
-                say("   I can't find that file, try again.")
-            label = voice_name(ask("   Save this voice under a name so you can reuse it? (name, or Enter to skip)", ""))
-        voice_dir = VOICES / (voice or label or "_last")
+    voice, ref, label = "", "", ""
+    voices = saved_voices()
+    if voices:
+        say(f"\n2) Saved voices: {', '.join(voices)}")
+        voice = ask("   Type one of these names to reuse it, or press Enter to use a new recording", "")
+        voice = voice_name(voice) if voice_name(voice) in voices else ""
+    if not voice:
+        say("\n2) Your recording: 5 to 15 seconds of one person speaking clearly, no music or background noise.")
+        say("   Any audio file works (wav, mp3, m4a, ...). Drag the file into this window or type its path.")
+        while True:
+            ref = clean_path(ask("   File:"))
+            if os.path.isfile(ref):
+                break
+            say("   I can't find that file, try again.")
+        label = voice_name(ask("   Save this voice under a name so you can reuse it? (name, or Enter to skip)", ""))
+    voice_dir = VOICES / (voice or label or "_last")
 
     ensure_env(model, hw, False)
 
     if ref:
-        say("\nPreparing the reference...")
+        say("\nPreparing the recording...")
         prepare_voice(model, voice_dir, ref, "", lang)
         txt = voice_dir / "ref.txt"
         if txt.exists():
@@ -350,31 +307,28 @@ def guided(hw):
             if fix:
                 txt.write_text(fix + "\n", encoding="utf-8")
 
-    say("\n4) What should it say? Type a sentence, or give the path of a .txt file.")
+    say("\n3) What should it say? Type a sentence, or give the path of a .txt file.")
     t = ask("   Text:")
     while not t:
         t = ask("   Text:")
     cand = clean_path(t)
     text = pathlib.Path(cand).read_text(encoding="utf-8") if t.lower().endswith(".txt") and os.path.isfile(cand) else t
-    base = speaker or voice or label or "voice"
+    base = voice or label or "voice"
     default_out = rel(OUT / f"{base}-{datetime.datetime.now():%Y%m%d-%H%M%S}.wav")
-    out = pathlib.Path(clean_path(ask("5) Where should the audio go?", default_out)))
+    out = pathlib.Path(clean_path(ask("4) Where should the audio go?", default_out)))
 
     argv = [launcher(), "tts.py"]
-    if speaker:
-        argv += ["--speaker", speaker] + (["--style", style] if style else [])
-    else:
-        argv += ["--voice", voice or label] if (voice or label) else ["--clone", ref]
+    argv += ["--voice", voice or label] if (voice or label) else ["--clone", ref]
     argv += ["--text", text] if len(text) <= 200 else ["--text-file", "my-text.txt"]
-    argv += ["--lang", lang, "--model", model, "-o", rel(out)]
+    argv += ["--lang", lang, "-o", rel(out)]
     say("\nNext time, this one command does everything above without questions:")
     say(f"\n   {shell_join(argv)}\n")
 
     wav, final = final_output(out, model)
-    speak(model, voice_dir, text, wav, lang, None, "auto", speaker, style)
+    speak(model, voice_dir, text, wav, lang, None, "auto")
     finish_output(wav, final)
     say(f"\nSaved: {final}")
-    say("If it doesn't sound right: try another --seed" + ("." if speaker else ", a cleaner or slightly longer reference, or the other model."))
+    say("If it doesn't sound right: try another --seed, or a cleaner or slightly longer recording.")
 
 
 # ---------- server ----------
@@ -409,12 +363,10 @@ def serve(a, hw):
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Text to speech with built-in speakers or a cloned voice. No arguments = guided mode.",
-        epilog="Examples:  python3 tts.py --speaker ryan --text \"Hello world\" --lang en\n"
-               "          python3 tts.py --clone me.wav --text \"Hello world\" --lang en",
+        description="Text to speech with a voice cloned from a short recording. No arguments = guided mode.",
+        epilog="Examples:  python3 tts.py --clone me.wav --save-voice me --text \"Hello world\" --lang en\n"
+               "          python3 tts.py --voice me --text \"Hello again\" --lang en",
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--speaker", help="a built-in speaker (see --list-speakers), no recording needed")
-    ap.add_argument("--style", default="", help="with --speaker: how to speak, e.g. \"slowly and sadly\" (plain English works best)")
     ap.add_argument("--clone", metavar="FILE", help="clone a voice from this recording: 5-15 s of one speaker (wav, mp3, m4a, ...)")
     ap.add_argument("--voice", help="use a voice saved earlier with --save-voice")
     ap.add_argument("--save-voice", metavar="NAME", help="keep the prepared reference under this name for later (--voice NAME)")
@@ -436,7 +388,6 @@ def main():
     ap.add_argument("--offline", action="store_true", help="with --serve: never contact Hugging Face (models must already be downloaded)")
     ap.add_argument("--list-models", action="store_true")
     ap.add_argument("--list-voices", action="store_true")
-    ap.add_argument("--list-speakers", action="store_true")
     a = ap.parse_args()
 
     hw = detect_hardware()
@@ -444,9 +395,6 @@ def main():
         say(f"Your computer: {describe(hw)}\n")
         for m, info in MODELS.items():
             say(f"{m}\n   {info['title']}: {info['note']}\n   languages: {', '.join(info['langs'])}")
-        return
-    if a.list_speakers:
-        say("\n".join(f"{n:10} {note}" for n, note in SPEAKERS))
         return
     if a.list_voices:
         say("\n".join(saved_voices()) or "No saved voices yet. Create one with: --clone FILE --save-voice NAME")
@@ -459,9 +407,9 @@ def main():
             die(f"unknown model '{m}'. Choose from: {', '.join(MODELS)}")
         ensure_env(m, hw, True)
         return
-    if a.speaker or a.clone or a.voice or a.text or a.text_file:
-        if sum(bool(x) for x in (a.speaker, a.clone, a.voice)) != 1:
-            die("give exactly one of --speaker NAME (built-in), --clone FILE (clone a new recording) or --voice NAME (a saved clone)")
+    if a.clone or a.voice or a.text or a.text_file:
+        if bool(a.clone) == bool(a.voice):
+            die("give exactly one of --clone FILE (clone a new recording) or --voice NAME (a voice saved earlier)")
         if (a.text is None) == (a.text_file is None):
             die("give exactly one of --text \"...\" or --text-file FILE")
         return headless(a, hw)
