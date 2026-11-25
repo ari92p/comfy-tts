@@ -11,7 +11,7 @@ Give it a 10-second recording of a voice and let it say anything, or turn an aud
 
 ```bash
 git clone https://github.com/ari92p/easy-tts && cd easy-tts
-scripts/setup.sh     # once (Windows: double-click scripts\setup.cmd)
+src/setup.sh     # once (Windows: double-click src\setup.cmd)
 ./easy-tts           # Windows: easy-tts.cmd
 ```
 
@@ -19,7 +19,7 @@ scripts/setup.sh     # once (Windows: double-click scripts\setup.cmd)
 asks for the text and writes the result to `out/`. For a new recording, Whisper writes down what is said (`voices/<name>/ref.txt`, you can correct it there by hand).
 The first run downloads the models (about 6 GB), once.
 
-`scripts/setup.sh` / `scripts/setup.cmd` need nothing on the computer: they fetch `uv`, `uv` fetches Python and the packages, all inside this folder (`.venvs/`).
+`src/setup.sh` / `src/setup.cmd` need nothing on the computer: they fetch `uv`, `uv` fetches Python and the packages, all inside this folder (`.venvs/`).
 You need a GPU: an NVIDIA card or a Mac with Apple Silicon.
 
 The examples below write `easy-tts`: that is `./easy-tts` (Windows: `easy-tts.cmd`) in this folder. For a command that works from anywhere: `ln -s "$PWD/easy-tts" ~/.local/bin/easy-tts`.
@@ -79,13 +79,13 @@ Options: `--port`, `--voices-dir FOLDER`, `--offline` (never contact Hugging Fac
 
 ### Start files
 
-`scripts/start_server.cmd` (Windows) and `scripts/start_server.sh` (Mac/Linux) are shortcuts for
+`src/start_server.cmd` (Windows) and `src/start_server.sh` (Mac/Linux) are shortcuts for
 `easy-tts --serve --host 0.0.0.0 --port 8190`: they go to their own folder first, so you can start them from anywhere.
 
 | System | How to start |
 | --- | --- |
-| Windows | double-click `scripts\start_server.cmd` (a console window stays open while the service runs) |
-| Mac / Linux | `scripts/start_server.sh` in a terminal (if it is not executable: `chmod +x scripts/start_server.sh`) |
+| Windows | double-click `src\start_server.cmd` (a console window stays open while the service runs) |
+| Mac / Linux | `src/start_server.sh` in a terminal (if it is not executable: `chmod +x src/start_server.sh`) |
 
 - Close the window or press `Ctrl+C` to stop it. If the service stops by itself (for example a job hangs), it starts again after 5 seconds.
 - They listen on **all network interfaces** (`0.0.0.0`) so other computers can reach port 8190. There is no login, so only do that in a network you trust,
