@@ -25,7 +25,6 @@ SRC = ROOT / "src"
 VENVS = ROOT / ".venvs"
 VOICES = ROOT / "voices"
 OUT = ROOT / "out"
-VERBOSE = False
 IS_WIN = os.name == "nt"
 
 # Everything the launcher knows about the models. `langs` are ISO codes. `python` is the interpreter uv fetches for the venv.
@@ -114,10 +113,7 @@ def run(cmd, **kw):
 
 
 def quiet_run(cmd):
-    """Run a setup command without its chatter (everything with -v); on failure show what it printed."""
-    if VERBOSE:
-        run(cmd, check=True)
-        return
+    """Run a setup command without its chatter; on failure show what it printed."""
     r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
     if r.returncode:
         die("setup failed:\n" + "\n".join(r.stdout.strip().splitlines()[-25:]))
@@ -150,11 +146,11 @@ def ensure_env(model, hw, assume_yes):
 
 
 def engine(model, args, quiet=True):
-    """Run engine.py in the model's virtualenv. Quiet unless -v or a model has to be downloaded (then its progress bars show)."""
+    """Run engine.py in the model's virtualenv. Quiet unless a model has to be downloaded (then its progress bars show)."""
     env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8", PYTORCH_ENABLE_MPS_FALLBACK="1",
                TOKENIZERS_PARALLELISM="false")
     cmd = [str(env_python(MODELS[model]["backend"])), str(SRC / "engine.py")] + args
-    if VERBOSE or not quiet:
+    if not quiet:
         r = run(cmd, env=env)
         if r.returncode:
             sys.exit(r.returncode)
@@ -240,7 +236,7 @@ class Working:
     """A one-line 'working...' note that disappears when done (only on a terminal)."""
 
     def __init__(self, text):
-        self.on = sys.stdout.isatty() and not VERBOSE
+        self.on = sys.stdout.isatty()
         if self.on:
             sys.stdout.write(text + "\r")
             sys.stdout.flush()
@@ -425,7 +421,6 @@ def serve(a, hw):
 # ---------- main ----------
 
 def main():
-    global VERBOSE
     ap = argparse.ArgumentParser(prog="easy-tts",
         description="easy-tts: text to speech on your own computer, with voice cloning from a short recording. "
                     "Run just `easy-tts` to be guided; with arguments give the voice and the language.",
@@ -447,7 +442,6 @@ def main():
     ap.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"])
     ap.add_argument("--speed", type=float, default=1.0, metavar="X", help="speaking speed: 1.0 = as the voice speaks, 1.2 = faster, 0.8 = slower (0.5 to 2)")
     ap.add_argument("--fast", action="store_true", help="skip the check that listens to the result and redoes pieces that do not match the text")
-    ap.add_argument("-v", "--verbose", action="store_true", help="show everything the setup and the voice engine print")
     ap.add_argument("-y", "--yes", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--setup", nargs="?", const="auto", metavar="MODEL", help="only install the environment, then exit")
     ap.add_argument("--serve", action="store_true", help="run the HTTP voice service instead of generating once")
@@ -466,7 +460,6 @@ def main():
         return "-" + name + eq + rest if len(name) > 2 and not name.startswith("--") and "-" + name in longs else arg
 
     a = ap.parse_args([fix(x) for x in sys.argv[1:]])
-    VERBOSE = a.verbose
 
     hw = detect_hardware()
     if a.list_models:

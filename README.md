@@ -50,7 +50,6 @@ and makes it again if it does not match the text (the model sometimes repeats a 
 | `--fast` | skip the listen-back check: much quicker, but a repeated or invented word can stay in |
 | `--transcribe AUDIO` | voice to text: writes what is said in an audio file to `out/<name>-<time>.txt` (Whisper). Add `--lang de` if you know the language, `-o text.txt` to choose the file |
 | `--list-voices` | show the voices you saved |
-| `-v` | show everything the setup and the voice engine print |
 
 Saved voices live in `voices/<name>/` (`ref.wav` and `ref.txt`).
 
