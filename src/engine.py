@@ -108,7 +108,7 @@ def pick_cut(words, lo=8.0, hi=REF_KEEP):
     for a, b in zip(words, words[1:]):
         if lo * 0.6 <= a.end <= hi and b.start - a.end >= 0.3:
             pause = a.end
-    return pause or hi
+    return pause or max((w.end for w in words if w.end <= hi), default=hi)   # never in the middle of a word
 
 
 def prepare(a):
@@ -117,7 +117,9 @@ def prepare(a):
     voice_dir = pathlib.Path(a.voice_dir)
     voice_dir.mkdir(parents=True, exist_ok=True)
     y = load_audio(a.ref)
-    y, _ = librosa.effects.trim(y, top_db=35)
+    full = len(y)
+    y, idx = librosa.effects.trim(y, top_db=35)
+    clipped = (full - idx[1]) < 0.1 * REF_SR      # speech runs right up to the end of the file: the recording was probably cut off
     seconds = len(y) / REF_SR
     if seconds < REF_MIN:
         die(f"the reference is only {seconds:.1f} s long after trimming silence. Use 5 to 15 s of clean speech.")
@@ -133,7 +135,15 @@ def prepare(a):
             log(f"Reference is {seconds:.0f} s, cut to {cut:.1f} s at a sentence end.")
         y = y[: int(cut * REF_SR)]
     elif not text:
-        text, _ = transcribe(y, a.lang)
+        text, words = transcribe(y, a.lang)
+        if clipped and len(words) > 3 and words[-1].end >= len(y) / REF_SR - 0.2:
+            # the last word is a fragment (the file ends in the middle of it): drop it, and the pieces of it, and end the recording before it
+            words = words[:-1]
+            while len(words) > 3 and (not any(c.isalnum() for c in words[-1].word) or words[-1].end - words[-1].start < 0.12 or words[-1].end >= len(y) / REF_SR - 0.2):
+                words = words[:-1]
+            y = y[: int((words[-1].end + 0.2) * REF_SR)]
+            text = "".join(w.word for w in words).strip()
+            log("The recording ended in the middle of a word, cut it off before that word.")
     sf.write(str(voice_dir / "ref.wav"), y, REF_SR, subtype="PCM_16")
     if text:
         (voice_dir / "ref.txt").write_text(text + "\n", encoding="utf-8")

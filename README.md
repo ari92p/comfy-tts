@@ -10,51 +10,44 @@ git clone https://github.com/ari92p/easy-tts && cd easy-tts
 python3 tts.py
 ```
 
-The first start asks for your language and a recording of the voice you want (5 to 15 seconds, one person), sets everything up and
-remembers both. From then on:
+`tts` on its own guides you: it asks for the language, lets you pick a saved voice or give a new recording (5 to 15 seconds, one person),
+asks for the text and writes the result to `out/`. The first run also sets everything up and downloads the model (about 4 GB), once.
 
-```bash
-python3 tts.py "Hello, this is my cloned voice."     # or just: python3 tts.py   and type the text
-echo "Hello from a pipe" | python3 tts.py
-```
-
-The result is written to `out/`. On Windows use `python` instead of `python3`. Want a plain `tts` command? On Mac and Linux:
-`chmod +x tts.py && ln -s "$PWD/tts.py" ~/.local/bin/tts`.
+On Windows use `python` instead of `python3`. Want a plain `tts` command? On Mac and Linux: `chmod +x tts.py && ln -s "$PWD/tts.py" ~/.local/bin/tts`.
 
 You need Python 3.9+, [`uv`](https://docs.astral.sh/uv/) (`brew install uv`, or `curl -LsSf https://astral.sh/uv/install.sh | sh`,
 on Windows `irm https://astral.sh/uv/install.ps1 | iex`) and a GPU: an NVIDIA card or a Mac with Apple Silicon.
-The first start downloads PyTorch and the model (about 4 GB for the model), once.
 
 ## Run it as command
 
+With arguments nothing is asked: give the voice and the language, every time.
+
 ```bash
-tts "Any text"                                  # your configured voice and language
-tts --configure                                 # change the language or the voice
-tts --clone me.wav --save-voice me "Hello"      # clone another voice from a recording and keep it as "me"
-tts --voice me "Hello again" -o hello.wav       # use a saved voice, choose the file
-tts --text-file chapter1.txt -o chapter1.wav    # a long text from a file
+tts --voice klara --lang de "Hallo, das ist meine Stimme."        # a saved voice
+echo "Hallo aus der Pipe" | tts --voice klara --lang de            # text from stdin
+tts --voice klara --lang de --text-file chapter1.txt -o chapter1.wav
+tts --clone me.wav --save-voice me --lang en "Hello"                # clone a recording and keep it as "me"
 ```
 
-Results go to `out/` (or where `-o` says). Long texts are spoken sentence by sentence, several sentences at a time, and joined. Afterwards the program
-listens to each sentence again with Whisper and makes it again if it does not match the text (the model sometimes repeats a sentence or invents a word).
+If something is missing, it says what (and lists your saved voices). Results go to `out/` (or where `-o` says).
+Long texts are spoken sentence by sentence, several at a time, and joined. Afterwards the program listens to each sentence again with Whisper
+and makes it again if it does not match the text (the model sometimes repeats a sentence or invents a word).
 
 | Option | What it does |
 | --- | --- |
-| `--configure` | set the language and the voice again |
-| `--clone FILE` | clone a voice from this recording (wav, mp3, m4a, ...) |
-| `--voice NAME` / `--save-voice NAME` | use / keep a cloned voice |
+| `--voice NAME` | a saved voice |
+| `--clone FILE` | clone a voice from this recording (wav, mp3, m4a, ...); `--save-voice NAME` keeps it |
+| `--lang de` | language of the text: en de fr es it pt ru zh ja ko (required) |
 | `--text "..."`, `--text-file FILE`, or the text as an argument | what to say |
-| `--lang de` | language of the text: en de fr es it pt ru zh ja ko (default: the one you configured) |
 | `--clone-text "..."` | with `--clone`: the exact words of your recording (otherwise Whisper listens for you) |
 | `--speed 1.2` | speaking speed: 1.0 as the voice speaks, above 1 faster, below 1 slower (0.5 to 2). The model has no speed setting, so this stretches the audio without changing the pitch: fine up to about 1.3, beyond that it starts to sound processed |
 | `--seed N` | same seed and text give the same result; change it for another take |
 | `-o FILE` | output file (`.mp3` and others work if ffmpeg is installed) |
-| `--list-voices` | show the voices you saved, for example `de/klara` |
-| `--fast` | skip that listen-back check (about 10 seconds quicker, but a repeated or invented word can stay in) |
+| `--fast` | skip the listen-back check (about 10 seconds quicker, but a repeated or invented word can stay in) |
+| `--list-voices` | show the voices you saved, with the language of their recording |
 | `-v` | show everything the setup and the voice engine print |
 
-Your choices are kept in `config.json` next to `tts.py` (not part of the repository). Saved voices are sorted by language: `voices/de/klara`, `voices/en/sweet` and so on.
-Use `--voice klara` or `--voice de/klara` (the second one when the same name exists in two languages).
+Saved voices live in `voices/<name>/`; the language of the recording is kept in the `meta.json` of each voice.
 
 ## Run it as service
 

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """easy-tts: text to speech on your own computer, with voice cloning from a short recording.
 
-  tts                                  first start: a short setup (language, your voice); afterwards it asks for a text and speaks it
-  tts "Hello!"                         speak a text with your voice        (also: echo "Hello!" | tts)
-  tts --configure                      change the language or the voice
-  tts --clone me.wav --text "Hello!"   clone a voice from a recording (add --save-voice NAME to keep it)
+  tts                                         guided: asks for the language, the voice and the text
+  tts --voice klara --lang de "Hello!"        one command: every parameter given (also: echo "Hello!" | tts --voice ... --lang ...)
+  tts --clone me.wav --save-voice me --lang en "Hello!"    clone a voice from a recording and keep it
 
 Run with --help for all options. This file only needs a plain Python 3.9+; the models run in private virtualenvs
 (.venvs/) that are created for you on first use, see README.md.
@@ -27,7 +26,6 @@ SRC = ROOT / "src"
 VENVS = ROOT / ".venvs"
 VOICES = ROOT / "voices"
 OUT = ROOT / "out"
-CONFIG = ROOT / "config.json"   # your language and voice, written by the first-start setup
 VERBOSE = False
 IS_WIN = os.name == "nt"
 
@@ -45,11 +43,16 @@ LANG_NAMES = {"en": "English", "de": "German", "fr": "French", "es": "Spanish", 
 
 
 def banner():
-    say("easy-tts - text to speech on your own computer, with voice cloning")
+    bold = sys.stdout.isatty() and not os.environ.get("NO_COLOR") and os.environ.get("TERM") != "dumb"
+    say("\033[1m# easy-tts\033[0m" if bold else "# easy-tts")
 
 
 def say(*a):
     print(*a, flush=True)
+
+
+def status(msg):
+    say("#easy-tts: " + msg)
 
 
 def die(msg):
@@ -131,7 +134,7 @@ def ensure_env(model, hw, assume_yes):
             "  macOS/Linux: curl -LsSf https://astral.sh/uv/install.sh | sh      (or: brew install uv)\n"
             "  Windows:     powershell -c \"irm https://astral.sh/uv/install.ps1 | iex\"\n"
             "Then run this command again.")
-    say("Setting up (first time only, a few minutes)...")
+    status("Setting up (first time only, a few minutes)...")
     venv = VENVS / backend
     if venv.exists():
         shutil.rmtree(venv)     # a half-finished earlier attempt
@@ -156,7 +159,7 @@ def engine(model, args, quiet=True):
         if r.returncode:
             sys.exit(r.returncode)
         return
-    w = Working("Working...")
+    w = Working("#easy-tts: Working...")
     r = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
     w.done()
     if r.returncode:
@@ -188,42 +191,37 @@ def voice_name(s):
     return re.sub(r"[^a-z0-9_-]+", "-", s.lower()).strip("-")[:40]
 
 
-def lang_folder(lang):
-    return lang if lang in QWEN_LANGS else "other"
-
-
 def voice_dirs():
-    """All saved voices as {name: folder}: 'de/klara' for voices/de/klara (sorted by language), 'klara' for an older voices/klara."""
-    found = {}
-    if VOICES.is_dir():
-        for d in sorted(VOICES.iterdir()):
-            if not d.is_dir() or d.name.startswith("_"):
-                continue
-            if (d / "ref.wav").exists():
-                found[d.name] = d
-            else:
-                for e in sorted(d.iterdir()):
-                    if e.is_dir() and not e.name.startswith("_") and (e / "ref.wav").exists():
-                        found[f"{d.name}/{e.name}"] = e
-    return found
+    """All saved voices as {name: folder} (voices/<name>/ with ref.wav, ref.txt and meta.json)."""
+    if not VOICES.is_dir():
+        return {}
+    return {d.name: d for d in sorted(VOICES.iterdir()) if d.is_dir() and not d.name.startswith("_") and (d / "ref.wav").exists()}
+
+
+def voice_meta(d):
+    try:
+        return json.loads((d / "meta.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def set_voice_lang(d, lang):
+    """Write the language of the recording into the voice's meta.json (other entries stay)."""
+    if lang and lang != "auto":
+        meta = voice_meta(d)
+        meta["lang"] = lang
+        (d / "meta.json").write_text(json.dumps(meta, indent=1, ensure_ascii=False), encoding="utf-8")
 
 
 def saved_voices():
     return list(voice_dirs())
 
 
-def find_voice(name, lang=""):
-    """A saved voice by 'de/klara' or just 'klara' -> (name, folder), or None. If 'klara' exists in several languages the language decides."""
-    found = voice_dirs()
-    name = "/".join(voice_name(x) for x in name.split("/"))
-    if name in found:
-        return name, found[name]
-    hits = [k for k in found if k.split("/")[-1] == name]
-    if len(hits) > 1 and lang:
-        hits = [k for k in hits if k.startswith(lang + "/")] or hits
-    if len(hits) > 1:
-        die(f"'{name}' exists in several languages: {', '.join(hits)}. Say which one, for example --voice {hits[0]}")
-    return (hits[0], found[hits[0]]) if hits else None
+def find_voice(name):
+    """A saved voice by name -> (name, folder), or None."""
+    name = voice_name(name)
+    d = voice_dirs().get(name)
+    return (name, d) if d else None
 
 
 def shell_join(argv):
@@ -241,17 +239,6 @@ def rel(p):
         return str(p.relative_to(pathlib.Path.cwd()))
     except ValueError:
         return str(p)
-
-
-def load_config():
-    try:
-        return json.loads(CONFIG.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-
-
-def save_config(cfg):
-    CONFIG.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
 
 
 def hf_cache():
@@ -288,7 +275,7 @@ def prepare_voice(model, voice_dir, ref, ref_text, lang):
         args += ["--ref-text", ref_text]
     quiet = cached("Systran/faster-whisper-small", "model.bin") or bool(ref_text)
     if not quiet:
-        say("Downloading the speech recognition model (about 0.5 GB, first time only)...")
+        status("Downloading the speech recognition model (about 0.5 GB, first time only)...")
     engine(model, args, quiet)
 
 
@@ -307,7 +294,7 @@ def speak(model, voice_dir, text, out, lang, seed, device, fast=False, speed=1.0
             args += ["--speed", str(speed)]
         quiet = cached(MODELS[model]["repo"], "model.safetensors") and (fast or cached("Systran/faster-whisper-small", "model.bin"))
         if not quiet:
-            say("Downloading the voice model (about 4 GB, first time only)...")
+            status("Downloading the voice model (about 4 GB, first time only)...")
         engine(model, args, quiet)
     finally:
         os.unlink(tmp)
@@ -345,62 +332,67 @@ def make_clip(a, hw, text, lang, voice="", clone=""):
         die("the text is empty")
     ref = ""
     if voice:
-        hit = find_voice(voice, lang)
+        hit = find_voice(voice)
         if not hit:
             die(f"no saved voice called '{voice}'. Saved voices: {', '.join(saved_voices()) or 'none yet'}")
-        label, voice_dir = hit[0].split("/")[-1], hit[1]
+        label, voice_dir = hit
     else:
         ref = clean_path(clone)
         if not os.path.isfile(ref):
             die(f"recording not found: {ref}")
         label = voice_name(a.save_voice) if a.save_voice else "_last"
-        voice_dir = VOICES / lang_folder(lang) / label if a.save_voice else VOICES / label
+        voice_dir = VOICES / label
     out = pathlib.Path(a.out) if a.out else OUT / f"{label.strip('_') or 'voice'}-{datetime.datetime.now():%Y%m%d-%H%M%S}.wav"
     wav, out = final_output(out, model)
     ensure_env(model, hw, True)
     if ref:
         prepare_voice(model, voice_dir, ref, a.clone_text, lang)
+        if a.save_voice:
+            set_voice_lang(voice_dir, lang)
     speak(model, voice_dir, text, wav, lang, a.seed, a.device, a.fast, a.speed)
     finish_output(wav, out)
-    say(f"Saved: {rel(out)}")
+    status(f"Saved: {rel(out)}")
 
 
 # ---------- first-start setup ----------
 
-def configure(hw, first):
-    """Ask for the language and the voice, prepare the voice, remember both in config.json."""
-    cfg = load_config()
-    say("\nInitial configuration" if first else "\nConfiguration")
-    lang = ask(f"Language of your texts ({', '.join(QWEN_LANGS)})", cfg.get("lang", "en")).lower()
+def dialog(hw):
+    """The guided run: language, voice (saved or a new recording), text. -> (lang, voice, text)"""
+    banner()
+    say("")
+    lang = ask(f"Language ({', '.join(QWEN_LANGS)})", "en").lower()
     while lang not in QWEN_LANGS:
-        lang = ask("Not supported. Please pick one of the list", "en").lower()
+        lang = ask("Please pick one of the list", "en").lower()
     voice, ref = "", ""
     voices = saved_voices()
     if voices:
-        hit = find_voice(ask(f"Use a saved voice? ({', '.join(voices)}) Name, or Enter for a new recording", "") or "-", lang)
+        say("\nVoices")
+        dirs = voice_dirs()
+        for i, v in enumerate(voices, 1):
+            say(f"  {i:>2}  {v:<22}{voice_meta(dirs[v]).get('lang', '')}")
+        say("   n  new recording")
+        pick = ask("Choose", "n").strip().lower()
+        hit = (voices[int(pick) - 1], None) if pick.isdigit() and 1 <= int(pick) <= len(voices) else find_voice(pick) if pick != "n" else None
         voice = hit[0] if hit else ""
     if not voice:
-        say("Recording of the voice: 5 to 15 seconds of one person speaking clearly. Drag the file here.")
+        say("\nRecording: 5 to 15 seconds of one person speaking clearly (drag the file here)")
         while True:
             ref = clean_path(ask("File:"))
             if os.path.isfile(ref):
                 break
             say("File not found, try again.")
         default = voice_name(pathlib.Path(ref).stem) or "voice"
-        voice = f"{lang_folder(lang)}/{voice_name(ask('Name for this voice', default)) or default}"
+        voice = voice_name(ask("Name", default)) or default
     model = recommend(lang, hw)
     ensure_env(model, hw, True)
     if ref:
         prepare_voice(model, VOICES / voice, ref, "", lang)
-        txt = VOICES / voice / "ref.txt"
-        if txt.exists():
-            say(f"I heard: \"{txt.read_text(encoding='utf-8').strip()}\"")
-            fix = ask("Correct? Press Enter, or type the right text (an exact transcript clones better):", "")
-            if fix:
-                txt.write_text(fix + "\n", encoding="utf-8")
-    cfg.update(lang=lang, voice=voice)
-    save_config(cfg)
-    return cfg
+        set_voice_lang(VOICES / voice, lang)
+    say("")
+    t = ""
+    while not t:
+        t = ask("Text:")
+    return lang, voice, read_text_file(t) if t.lower().endswith(".txt") and os.path.isfile(clean_path(t)) else t
 
 
 # ---------- server ----------
@@ -437,20 +429,20 @@ def main():
     global VERBOSE
     ap = argparse.ArgumentParser(
         description="easy-tts: text to speech on your own computer, with voice cloning from a short recording. "
-                    "First start: a short setup. Afterwards: tts \"your text\".",
-        epilog="Examples:  tts \"Hello world\"                      speak with your configured voice\n"
-               "          echo \"Hello world\" | tts                text from stdin\n"
-               "          tts --clone me.wav --save-voice me --text \"Hello world\" --lang en",
+                    "Run just `tts` to be guided; with arguments give the voice and the language.",
+        epilog="Examples:  tts                                          guided\n"
+               "          tts --voice klara --lang de \"Hallo Welt\"     one command\n"
+               "          echo \"Hallo\" | tts --voice klara --lang de   text from stdin\n"
+               "          tts --clone me.wav --save-voice me --lang en \"Hello\"",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("words", nargs="*", metavar="TEXT", help="what to say (or use --text, --text-file, or pipe it in)")
-    ap.add_argument("--configure", action="store_true", help="change the language or the voice you use")
     ap.add_argument("--clone", metavar="FILE", help="clone a voice from this recording: 5-15 s of one speaker (wav, mp3, m4a, ...)")
     ap.add_argument("--voice", help="use a voice saved earlier with --save-voice")
     ap.add_argument("--save-voice", metavar="NAME", help="keep the prepared recording under this name for later (--voice NAME)")
     ap.add_argument("--text", help="what to say")
     ap.add_argument("--text-file", help="read what to say from a text file")
     ap.add_argument("-o", "--out", help="output file (default: out/<voice>-<time>.wav; .mp3 works if ffmpeg is installed)")
-    ap.add_argument("--lang", help="language of the text, e.g. en, de, fr (default: the one you configured)")
+    ap.add_argument("--lang", help="language of the text: en de fr es it pt ru zh ja ko (required with --voice/--clone)")
     ap.add_argument("--model", default="auto", choices=["auto"] + list(MODELS), help=argparse.SUPPRESS)
     ap.add_argument("--clone-text", help="with --clone: the exact words spoken in the recording (default: Whisper listens for you)")
     ap.add_argument("--seed", type=int, help="same seed + same text = same result; change it for a different take")
@@ -485,9 +477,9 @@ def main():
             say(f"{m}\n   {info['title']}: {info['note']}\n   languages: {', '.join(info['langs'])}")
         return
     if a.list_voices:
-        say("\n".join(saved_voices()) or "No saved voices yet. Run tts once to set one up.")
+        dirs = voice_dirs()
+        say("\n".join(f"{v:<22}{voice_meta(d).get('lang', '')}" for v, d in dirs.items()) or "No saved voices yet. Run tts to record one.")
         return
-    banner()
     if a.serve:
         return serve(a, hw)
     if a.setup:
@@ -497,29 +489,27 @@ def main():
         ensure_env(m, hw, True)
         return
 
-    cfg = load_config()
     if a.clone and a.voice:
         die("give either --clone FILE (a new recording) or --voice NAME (a voice saved earlier), not both")
     if not 0.5 <= a.speed <= 2.0:
         die("--speed must be between 0.5 and 2 (1.0 = unchanged)")
     if sum(x is not None and x != [] for x in (a.text, a.words or None, a.text_file)) > 1:
         die("give the text once: as an argument, with --text, or with --text-file")
-    if a.configure:
-        if not sys.stdin.isatty():
-            die("--configure needs a terminal")
-        configure(hw, first=not cfg.get("voice"))
-        say("Saved. Now: tts \"your text\"")
-        return
 
-    voice, clone = a.voice or "", a.clone or ""
-    lang = (a.lang or cfg.get("lang") or "auto").lower()
-    if not voice and not clone:
-        voice = cfg.get("voice", "")
-        if not voice:                       # first start
-            if not sys.stdin.isatty():
-                die("not set up yet: run tts once in a terminal (or use --clone FILE)")
-            cfg = configure(hw, first=True)
-            voice, lang = cfg["voice"], (a.lang or cfg["lang"]).lower()
+    if not (a.words or a.text is not None or a.text_file or a.voice or a.clone or a.lang):   # plain `tts`: be guided
+        if not sys.stdin.isatty():
+            ap.print_help()
+            return
+        lang, voice, text = dialog(hw)
+        return make_clip(a, hw, text, lang, voice, "")
+
+    missing = []
+    if not (a.voice or a.clone):
+        missing.append("--voice NAME (saved: " + (", ".join(saved_voices()) or "none yet") + ") or --clone FILE")
+    if not a.lang:
+        missing.append(f"--lang ({', '.join(QWEN_LANGS)})")
+    if missing:
+        die("missing " + " and ".join(missing) + ".\nOr just run `tts` and answer the questions.")
     if a.text is not None:
         text = a.text
     elif a.words:
@@ -533,7 +523,7 @@ def main():
         while not t:
             t = ask("Text:")
         text = read_text_file(t) if t.lower().endswith(".txt") and os.path.isfile(clean_path(t)) else t
-    make_clip(a, hw, text, lang, voice, clone)
+    make_clip(a, hw, text, a.lang.lower(), a.voice or "", a.clone or "")
 
 
 if __name__ == "__main__":
