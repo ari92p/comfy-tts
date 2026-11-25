@@ -113,43 +113,10 @@ def run(cmd, **kw):
     return subprocess.run(cmd, **kw)
 
 
-def quiet_run(cmd):
-    """Run a setup command without its chatter; on failure show what it printed."""
-    r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
-    if r.returncode:
-        die("setup failed:\n" + "\n".join(r.stdout.strip().splitlines()[-25:]))
-
-
-def install_uv():
-    """No uv on this computer: install it into .venvs/uv (inside this folder, nothing global)."""
-    home = VENVS / "uv"
-    exe = home / ("Scripts" if IS_WIN else "bin") / ("uv.exe" if IS_WIN else "uv")
-    if not exe.exists():
-        status("Installing uv (the Python setup tool, first time only)...")
-        quiet_run([sys.executable, "-m", "venv", str(home)])
-        quiet_run([str(exe.with_name("python.exe" if IS_WIN else "python")), "-m", "pip", "install", "-q", "uv"])
-    return str(exe)
-
-
 def ensure_env(model, hw, assume_yes):
-    """Create the private virtualenv for this model's backend on first use."""
-    backend = MODELS[model]["backend"]
-    if env_ready(backend):
-        return
-    uv = shutil.which("uv") or install_uv()
-    status("Setting up (first time only, a few minutes)...")
-    venv = VENVS / backend
-    if venv.exists():
-        shutil.rmtree(venv)     # a half-finished earlier attempt
-    py = str(env_python(backend))
-    quiet_run([uv, "venv", "--python", MODELS[model]["python"], str(venv)])
-    reqs = ["-r", str(SRC / "requirements.txt")]
-    nvidia = hw["kind"] == "cuda"
-    if backend == "qwen" and nvidia and IS_WIN:
-        # on Windows the default PyPI torch is CPU-only
-        quiet_run([uv, "pip", "install", "--python", py, "torch", "torchaudio", "--index-url", "https://download.pytorch.org/whl/cu128"])
-    quiet_run([uv, "pip", "install", "--python", py] + reqs)
-    (venv / ".tts-ready").write_text("ok\n")
+    """The private virtualenv is made by setup.sh / setup.cmd; without it there is nothing to run."""
+    if not env_ready(MODELS[model]["backend"]):
+        die("Not set up yet. Run the one-time setup first: ./setup.sh (Windows: setup.cmd)")
 
 
 def engine(model, args, quiet=True):
@@ -500,7 +467,6 @@ def main():
     ap.add_argument("--speed", type=float, default=1.0, metavar="X", help="speaking speed: 1.0 = as the voice speaks, 1.2 = faster, 0.8 = slower (0.5 to 2)")
     ap.add_argument("--fast", action="store_true", help="skip the check that listens to the result and redoes pieces that do not match the text")
     ap.add_argument("-y", "--yes", action="store_true", help=argparse.SUPPRESS)
-    ap.add_argument("--setup", nargs="?", const="auto", metavar="MODEL", help="only install the environment, then exit")
     ap.add_argument("--serve", action="store_true", help="run the HTTP voice service instead of generating once")
     ap.add_argument("--host", default="127.0.0.1", help="with --serve: address to listen on (0.0.0.0 = reachable from other computers)")
     ap.add_argument("--port", type=int, default=8190, help="with --serve: port (default 8190)")
@@ -531,12 +497,6 @@ def main():
         return transcribe_audio(a, hw)
     if a.serve:
         return serve(a, hw)
-    if a.setup:
-        m = a.setup if a.setup != "auto" else recommend("auto", hw)
-        if m not in MODELS:
-            die(f"unknown model '{m}'. Choose from: {', '.join(MODELS)}")
-        ensure_env(m, hw, True)
-        return
 
     if a.clone and a.voice:
         die("give either --clone FILE (a new recording) or --voice NAME (a voice saved earlier), not both")

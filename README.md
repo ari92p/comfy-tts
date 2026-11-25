@@ -11,18 +11,18 @@ Give it a 10-second recording of a voice and let it say anything, or turn an aud
 
 ```bash
 git clone https://github.com/ari92p/easy-tts && cd easy-tts
-python3 easy-tts.py
+./setup.sh                          # once (Windows: double-click setup.cmd)
+.venvs/qwen/bin/python easy-tts.py  # Windows: .venvs\qwen\Scripts\python.exe easy-tts.py
 ```
 
 `easy-tts` on its own guides you: it asks for the language, lets you pick a saved voice or give a new recording (5 to 15 seconds, one person),
 asks for the text and writes the result to `out/`. For a new recording, Whisper writes down what is said (`voices/<name>/ref.txt`, you can correct it there by hand).
-The first run also sets everything up and downloads the models (about 6 GB), once.
+The first run downloads the models (about 6 GB), once.
 
-On Windows use `python` instead of `python3`. Want a plain `easy-tts` command? On Mac and Linux: `chmod +x easy-tts.py && ln -s "$PWD/easy-tts.py" ~/.local/bin/easy-tts` (the examples below use it; with the file alone, write `python3 easy-tts.py` instead).
+`setup.sh` / `setup.cmd` need nothing on the computer: they fetch `uv`, `uv` fetches Python and the packages, all inside this folder (`.venvs/`).
+You need a GPU: an NVIDIA card or a Mac with Apple Silicon.
 
-You need a GPU (an NVIDIA card or a Mac with Apple Silicon) and Python 3.9+. Everything else (the Python setup tool `uv`, the packages, the models) is installed by the first run, inside this folder.
-
-No Python on the computer (typical on Windows)? Run the one-time setup first: `./setup.sh` (Mac/Linux) or double-click `setup.cmd` (Windows). It fetches `uv`, `uv` fetches Python, and it prints the command to start the tool.
+Want a plain `easy-tts` command? On Mac and Linux: `ln -s "$PWD/easy-tts.py" ~/.local/bin/easy-tts` works if your own `python3` is 3.9+ (the examples below use it; otherwise write `.venvs/qwen/bin/python easy-tts.py`).
 
 ## Run it as command
 
@@ -68,8 +68,8 @@ Whisper `large-v3-turbo` runs on your own computer; nothing is uploaded.
 ## Run it as service
 
 ```bash
-python3 easy-tts.py --serve                      # http://127.0.0.1:8190
-python3 easy-tts.py --serve --host 0.0.0.0       # reachable from other computers (no login, use a firewall)
+easy-tts --serve                      # http://127.0.0.1:8190
+easy-tts --serve --host 0.0.0.0       # reachable from other computers (no login, use a firewall)
 ```
 
 A small HTTP service for other programs: saved voices with several samples, Whisper transcripts, `POST /generate`.
