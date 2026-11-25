@@ -14,11 +14,11 @@ git clone https://github.com/ari92p/easy-tts && cd easy-tts
 python3 easy-tts.py
 ```
 
-`tts` on its own guides you: it asks for the language, lets you pick a saved voice or give a new recording (5 to 15 seconds, one person),
+`easy-tts` on its own guides you: it asks for the language, lets you pick a saved voice or give a new recording (5 to 15 seconds, one person),
 asks for the text and writes the result to `out/`. For a new recording, Whisper writes down what is said (`voices/<name>/ref.txt`, you can correct it there by hand).
 The first run also sets everything up and downloads the models (about 6 GB), once.
 
-On Windows use `python` instead of `python3`. Want a plain `tts` command? On Mac and Linux: `chmod +x easy-tts.py && ln -s "$PWD/easy-tts.py" ~/.local/bin/tts`.
+On Windows use `python` instead of `python3`. Want a plain `easy-tts` command? On Mac and Linux: `chmod +x easy-tts.py && ln -s "$PWD/easy-tts.py" ~/.local/bin/easy-tts` (the examples below use it; with the file alone, write `python3 easy-tts.py` instead).
 
 You need Python 3.9+, [`uv`](https://docs.astral.sh/uv/) (`brew install uv`, or `curl -LsSf https://astral.sh/uv/install.sh | sh`,
 on Windows `irm https://astral.sh/uv/install.ps1 | iex`) and a GPU: an NVIDIA card or a Mac with Apple Silicon.
@@ -28,10 +28,10 @@ on Windows `irm https://astral.sh/uv/install.ps1 | iex`) and a GPU: an NVIDIA ca
 With arguments nothing is asked: give the voice and the language, every time.
 
 ```bash
-tts --voice klara --lang de "Hallo, das ist meine Stimme."        # a saved voice
-echo "Hallo aus der Pipe" | tts --voice klara --lang de            # text from stdin
-tts --voice klara --lang de --text-file chapter1.txt -o chapter1.wav
-tts --clone me.wav --save-voice me --lang en "Hello"                # clone a recording and keep it as "me"
+easy-tts --voice klara --lang de "Hallo, das ist meine Stimme."        # a saved voice
+echo "Hallo aus der Pipe" | easy-tts --voice klara --lang de            # text from stdin
+easy-tts --voice klara --lang de --text-file chapter1.txt -o chapter1.wav
+easy-tts --clone me.wav --save-voice me --lang en "Hello"                # clone a recording and keep it as "me"
 ```
 
 If something is missing, it says what (and lists your saved voices). Results go to `out/` (or where `-o` says).
@@ -58,9 +58,9 @@ Saved voices live in `voices/<name>/` (`ref.wav` and `ref.txt`).
 ## Voice to text
 
 ```bash
-tts --transcribe interview.mp3                # writes out/interview-<time>.txt
-tts --transcribe interview.mp3 --lang de      # if you know the language (otherwise it is detected)
-tts --transcribe interview.mp3 -o notes.txt   # choose the file
+easy-tts --transcribe interview.mp3                # writes out/interview-<time>.txt
+easy-tts --transcribe interview.mp3 --lang de      # if you know the language (otherwise it is detected)
+easy-tts --transcribe interview.mp3 -o notes.txt   # choose the file
 ```
 
 Whisper `large-v3-turbo` runs on your own computer; nothing is uploaded.

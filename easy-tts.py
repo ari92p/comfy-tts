@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """easy-tts: text to speech on your own computer, with voice cloning from a short recording.
 
-  tts                                         guided: asks for the language, the voice and the text
-  tts --voice klara --lang de "Hello!"        one command: every parameter given (also: echo "Hello!" | tts --voice ... --lang ...)
-  tts --clone me.wav --save-voice me --lang en "Hello!"    clone a voice from a recording and keep it
+  easy-tts                                    guided: asks for the language, the voice and the text
+  easy-tts --voice klara --lang de "Hello!"   one command: every parameter given (also: echo "Hello!" | easy-tts --voice ... --lang ...)
+  easy-tts --clone me.wav --save-voice me --lang en "Hello!"    clone a voice from a recording and keep it
 
 Run with --help for all options. This file only needs a plain Python 3.9+; the models run in private virtualenvs
 (.venvs/) that are created for you on first use, see README.md.
@@ -428,13 +428,13 @@ def serve(a, hw):
 
 def main():
     global VERBOSE
-    ap = argparse.ArgumentParser(
+    ap = argparse.ArgumentParser(prog="easy-tts",
         description="easy-tts: text to speech on your own computer, with voice cloning from a short recording. "
-                    "Run just `tts` to be guided; with arguments give the voice and the language.",
+                    "Run just `easy-tts` to be guided; with arguments give the voice and the language.",
         epilog="Examples:  tts                                          guided\n"
-               "          tts --voice klara --lang de \"Hallo Welt\"     one command\n"
-               "          echo \"Hallo\" | tts --voice klara --lang de   text from stdin\n"
-               "          tts --clone me.wav --save-voice me --lang en \"Hello\"",
+               "          easy-tts --voice klara --lang de \"Hallo Welt\"     one command\n"
+               "          echo \"Hallo\" | easy-tts --voice klara --lang de   text from stdin\n"
+               "          easy-tts --clone me.wav --save-voice me --lang en \"Hello\"",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("words", nargs="*", metavar="TEXT", help="what to say (or use --text, --text-file, or pipe it in)")
     ap.add_argument("--clone", metavar="FILE", help="clone a voice from this recording: 5-15 s of one speaker (wav, mp3, m4a, ...)")
@@ -478,7 +478,7 @@ def main():
             say(f"{m}\n   {info['title']}: {info['note']}\n   languages: {', '.join(info['langs'])}")
         return
     if a.list_voices:
-        say("\n".join(saved_voices()) or "No saved voices yet. Run tts to record one.")
+        say("\n".join(saved_voices()) or "No saved voices yet. Run easy-tts to record one.")
         return
     if a.transcribe:
         return transcribe_audio(a, hw)
@@ -498,7 +498,7 @@ def main():
     if sum(x is not None and x != [] for x in (a.text, a.words or None, a.text_file)) > 1:
         die("give the text once: as an argument, with --text, or with --text-file")
 
-    if not (a.words or a.text is not None or a.text_file or a.voice or a.clone or a.lang):   # plain `tts`: be guided
+    if not (a.words or a.text is not None or a.text_file or a.voice or a.clone or a.lang):   # plain `easy-tts`: be guided
         if not sys.stdin.isatty():
             ap.print_help()
             return
@@ -511,7 +511,7 @@ def main():
     if not a.lang:
         missing.append(f"--lang ({', '.join(QWEN_LANGS)})")
     if missing:
-        die("missing " + " and ".join(missing) + ".\nOr just run `tts` and answer the questions.")
+        die("missing " + " and ".join(missing) + ".\nOr just run `easy-tts` and answer the questions.")
     if a.text is not None:
         text = a.text
     elif a.words:
