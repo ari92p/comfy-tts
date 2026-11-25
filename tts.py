@@ -30,6 +30,7 @@ IS_WIN = os.name == "nt"
 
 # Everything the launcher knows about the models. `langs` are ISO codes. `python` is the interpreter uv fetches for the venv.
 QWEN_LANGS = ["en", "de", "fr", "es", "it", "pt", "ru", "zh", "ja", "ko"]
+WHISPER_REPO = "mobiuslabsgmbh/faster-whisper-large-v3-turbo"   # the default Whisper model (engine.py and server.py use the same)
 MODELS = {
     "qwen3-tts-1.7b": {
         "backend": "qwen", "repo": "Qwen/Qwen3-TTS-12Hz-1.7B-Base", "langs": QWEN_LANGS, "python": "3.12",
@@ -257,9 +258,9 @@ def prepare_voice(model, voice_dir, ref, ref_text, lang):
     args = ["prepare", "--ref", ref, "--voice-dir", str(voice_dir), "--lang", lang]
     if ref_text:
         args += ["--ref-text", ref_text]
-    quiet = cached("Systran/faster-whisper-small", "model.bin") or bool(ref_text)
+    quiet = cached(WHISPER_REPO, "model.bin") or bool(ref_text)
     if not quiet:
-        status("Downloading the speech recognition model (about 0.5 GB, first time only)...")
+        status("Downloading the speech recognition model (about 1.5 GB, first time only)...")
     engine(model, args, quiet)
 
 
@@ -276,7 +277,7 @@ def speak(model, voice_dir, text, out, lang, seed, device, fast=False, speed=1.0
             args += ["--no-check"]
         if speed != 1.0:
             args += ["--speed", str(speed)]
-        quiet = cached(MODELS[model]["repo"], "model.safetensors") and (fast or cached("Systran/faster-whisper-small", "model.bin"))
+        quiet = cached(MODELS[model]["repo"], "model.safetensors") and (fast or cached(WHISPER_REPO, "model.bin"))
         if not quiet:
             status("Downloading the voice model (about 4 GB, first time only)...")
         engine(model, args, quiet)
@@ -305,6 +306,22 @@ def finish_output(wav, out):
 
 def read_text_file(path):
     return pathlib.Path(clean_path(path)).read_text(encoding="utf-8")
+
+
+def transcribe_audio(a, hw):
+    """Voice to text: write what is said in an audio file as a text file (default: out/<name>-<time>.txt)."""
+    src = clean_path(a.transcribe)
+    if not os.path.isfile(src):
+        die(f"audio file not found: {src}")
+    model = recommend("auto", hw)
+    ensure_env(model, hw, True)
+    out = pathlib.Path(a.out) if a.out else OUT / f"{pathlib.Path(src).stem}-{datetime.datetime.now():%Y%m%d-%H%M%S}.txt"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    quiet = cached(WHISPER_REPO, "model.bin")
+    if not quiet:
+        status("Downloading the speech recognition model (about 1.5 GB, first time only)...")
+    engine(model, ["transcribe", "--file", src, "--out-file", str(out), "--lang", (a.lang or "auto").lower()], quiet)
+    status(f"Saved: {rel(out)}")
 
 
 def make_clip(a, hw, text, lang, voice="", clone=""):
@@ -392,8 +409,6 @@ def serve(a, hw):
         env["VOICE_DIR"] = str(pathlib.Path(a.voices_dir).resolve())
     if a.offline:
         env["VOICE_OFFLINE"] = "1"
-    if a.whisper:
-        env["VOICE_WHISPER"] = a.whisper
     cmd = [str(env_python("qwen")), str(SRC / "server.py"), "--host", a.host, "--port", str(a.port)]
     say(f"easy-tts service on http://{a.host}:{a.port}  (Ctrl+C stops it)")
     while True:
@@ -442,9 +457,9 @@ def main():
     ap.add_argument("--host", default="127.0.0.1", help="with --serve: address to listen on (0.0.0.0 = reachable from other computers)")
     ap.add_argument("--port", type=int, default=8190, help="with --serve: port (default 8190)")
     ap.add_argument("--voices-dir", help="with --serve: folder with the saved voices (default: voices/); use an existing folder to keep your voices")
-    ap.add_argument("--whisper", help="with --serve: Whisper model for transcripts (default large-v3-turbo; \"small\" is a much smaller download)")
     ap.add_argument("--offline", action="store_true", help="with --serve: never contact Hugging Face (models must already be downloaded)")
     ap.add_argument("--list-models", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--transcribe", metavar="AUDIO", help="voice to text: write what is said in an audio file to out/<name>-<time>.txt (add --lang if you know it, -o to choose the file)")
     ap.add_argument("--list-voices", action="store_true", help="show the voices you saved")
     # Forgive a single dash on a long option: "-voice klara" means "--voice klara" (otherwise argparse reads it as -v -o ice ...)
     longs = {o for o in ap._option_string_actions if o.startswith("--")}
@@ -465,6 +480,8 @@ def main():
     if a.list_voices:
         say("\n".join(saved_voices()) or "No saved voices yet. Run tts to record one.")
         return
+    if a.transcribe:
+        return transcribe_audio(a, hw)
     if a.serve:
         return serve(a, hw)
     if a.setup:

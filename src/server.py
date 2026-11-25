@@ -53,7 +53,7 @@ from pydantic import BaseModel  # noqa: E402
 VOICES = pathlib.Path(os.environ.get("VOICE_DIR") or pathlib.Path(__file__).resolve().parent.parent / "voices")
 IDLE_SECONDS = int(os.environ.get("VOICE_IDLE_SECONDS", "300"))
 MODELS = {"clone": "Qwen/Qwen3-TTS-12Hz-1.7B-Base"}
-WHISPER = os.environ.get("VOICE_WHISPER", "large-v3-turbo")   # e.g. "small" for a much smaller download
+WHISPER = os.environ.get("VOICE_WHISPER", "large-v3-turbo")
 SPEAKERS = []                 # no built-in speakers: only the Base model is used, which clones voices
 LANGUAGES = ("Auto", "English", "German", "French", "Spanish", "Italian", "Portuguese", "Russian", "Chinese", "Japanese", "Korean")
 WHISPER_LANGS = {"English": "en", "German": "de", "French": "fr", "Spanish": "es", "Italian": "it", "Portuguese": "pt",

@@ -4,6 +4,8 @@
   engine.py prepare --ref FILE --voice-dir DIR [--ref-text T] [--lang de]
       Turns any audio file into a clean 24 kHz mono reference (<= 15 s) in DIR/ref.wav and writes the
       transcript DIR/ref.txt (given by --ref-text, or heard by Whisper).
+  engine.py transcribe --file AUDIO --out-file TEXT.txt [--lang de]
+      Writes what is said in an audio file (Whisper).
   engine.py speak --model REPO --voice-dir DIR --text-file F --out OUT.wav [--lang de] [--seed N]
       Reads DIR/ref.wav and speaks the text in that cloned voice.
 
@@ -84,7 +86,7 @@ _whisper = []
 def whisper_model():
     if not _whisper:
         from faster_whisper import WhisperModel
-        _whisper.append(WhisperModel(os.environ.get("VOICE_WHISPER", "small"), device="cpu", compute_type="int8"))
+        _whisper.append(WhisperModel(os.environ.get("VOICE_WHISPER", "large-v3-turbo"), device="cpu", compute_type="int8"))
     return _whisper[0]
 
 
@@ -285,6 +287,11 @@ def listen_back(results, chunks, lang):
     return [0.0 if broken(r) else similarity(c, transcribe(r[0], lang, quiet=True)[0], lang) for r, c in zip(results, chunks)]
 
 
+def transcribe_file(a):
+    text, _ = transcribe(load_audio(a.file), a.lang, quiet=True)
+    pathlib.Path(a.out_file).write_text(text + "\n", encoding="utf-8")
+
+
 def speak(a):
     import numpy as np
     import soundfile as sf
@@ -348,6 +355,10 @@ def main():
     p.add_argument("--voice-dir", required=True)
     p.add_argument("--ref-text", default="")
     p.add_argument("--lang", default="auto")
+    t = sub.add_parser("transcribe")
+    t.add_argument("--file", required=True)
+    t.add_argument("--out-file", required=True)
+    t.add_argument("--lang", default="auto")
     s = sub.add_parser("speak")
     s.add_argument("--model", default="")
     s.add_argument("--voice-dir", required=True)
@@ -359,7 +370,7 @@ def main():
     s.add_argument("--seed", type=int)
     s.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"])
     a = ap.parse_args()
-    prepare(a) if a.cmd == "prepare" else speak(a)
+    {"prepare": prepare, "transcribe": transcribe_file, "speak": speak}[a.cmd](a)
 
 
 if __name__ == "__main__":

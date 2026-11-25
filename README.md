@@ -1,7 +1,11 @@
 # easy-tts
 
-Text to speech on your own computer, with voice cloning: give it a 10-second recording of a voice and let it say anything.
-No account, no API key, everything runs locally.
+Text to speech with voice cloning, and voice to text, on your own computer.
+Give it a 10-second recording of a voice and let it say anything, or turn an audio file into text. No account, no API key, everything runs locally.
+
+- **Text to speech:** clone a voice from a short recording ([Qwen3-TTS](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base), 10 languages).
+- **Voice to text:** write down what is said in an audio file ([Whisper](https://github.com/SYSTRAN/faster-whisper) `large-v3-turbo`).
+- **Voice service:** the same as a small HTTP service for other programs.
 
 ## Quick start
 
@@ -11,7 +15,8 @@ python3 tts.py
 ```
 
 `tts` on its own guides you: it asks for the language, lets you pick a saved voice or give a new recording (5 to 15 seconds, one person),
-asks for the text and writes the result to `out/`. For a new recording, Whisper writes down what is said (`voices/<name>/ref.txt`, you can correct it there by hand). The first run also sets everything up and downloads the model (about 4 GB), once.
+asks for the text and writes the result to `out/`. For a new recording, Whisper writes down what is said (`voices/<name>/ref.txt`, you can correct it there by hand).
+The first run also sets everything up and downloads the models (about 6 GB), once.
 
 On Windows use `python` instead of `python3`. Want a plain `tts` command? On Mac and Linux: `chmod +x tts.py && ln -s "$PWD/tts.py" ~/.local/bin/tts`.
 
@@ -44,10 +49,21 @@ and makes it again if it does not match the text (the model sometimes repeats a 
 | `--seed N` | same seed and text give the same result; change it for another take |
 | `-o FILE` | output file (`.mp3` and others work if ffmpeg is installed) |
 | `--fast` | skip the listen-back check (about 10 seconds quicker, but a repeated or invented word can stay in) |
+| `--transcribe AUDIO` | voice to text: writes what is said in an audio file to `out/<name>-<time>.txt` (Whisper). Add `--lang de` if you know the language, `-o text.txt` to choose the file |
 | `--list-voices` | show the voices you saved |
 | `-v` | show everything the setup and the voice engine print |
 
 Saved voices live in `voices/<name>/` (`ref.wav` and `ref.txt`).
+
+## Voice to text
+
+```bash
+tts --transcribe interview.mp3                # writes out/interview-<time>.txt
+tts --transcribe interview.mp3 --lang de      # if you know the language (otherwise it is detected)
+tts --transcribe interview.mp3 -o notes.txt   # choose the file
+```
+
+Whisper `large-v3-turbo` runs on your own computer; nothing is uploaded.
 
 ## Run it as service
 
@@ -57,9 +73,9 @@ python3 tts.py --serve --host 0.0.0.0       # reachable from other computers (no
 ```
 
 A small HTTP service for other programs: saved voices with several samples, Whisper transcripts, `POST /generate`.
-The endpoints are listed at the top of [src/server.py](src/server.py). On start it downloads missing models (about 4.7 GB, with progress bars),
+The endpoints are listed at the top of [src/server.py](src/server.py). On start it downloads missing models (about 5.7 GB, with progress bars),
 then answers one job at a time, frees the GPU after 5 minutes without requests and restarts itself if a job hangs.
-Options: `--port`, `--voices-dir FOLDER`, `--whisper small`, `--offline` (never contact Hugging Face).
+Options: `--port`, `--voices-dir FOLDER`, `--offline` (never contact Hugging Face).
 
 ### Start files
 
@@ -74,7 +90,7 @@ Options: `--port`, `--voices-dir FOLDER`, `--whisper small`, `--offline` (never 
 - Close the window or press `Ctrl+C` to stop it. If the service stops by itself (for example a job hangs), it starts again after 5 seconds.
 - They listen on **all network interfaces** (`0.0.0.0`) so other computers can reach port 8190. There is no login, so only do that in a network you trust,
   or change `--host 0.0.0.0` to `--host 127.0.0.1` in the file to keep it on your own computer.
-- Edit the last line of the file to change the port, `--voices-dir`, `--whisper` or to add `--offline`.
+- Edit the last line of the file to change the port or `--voices-dir`, or to add `--offline`.
 - To start it with the computer, run the file from Windows Task Scheduler (trigger: at log on) or from the login items of your system.
 
 ## Languages
@@ -99,11 +115,11 @@ The model is Qwen3-TTS 1.7B Base (Apache-2.0), the largest of its family. It clo
 | Download | When | Size |
 | --- | --- | --- |
 | `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | always | about 4.2 GB |
-| Whisper `small` | the transcript of your recording | about 0.5 GB |
+| Whisper `large-v3-turbo` | the transcript of your recording and the check of the result | about 1.5 GB |
 
 Already have a model? Put its cache folder (e.g. `models--Qwen--Qwen3-TTS-12Hz-1.7B-Base`) into that cache and nothing is downloaded.
 
 Inside the repository folder only this is created (none of it goes into git): `.venvs/` (the Python environment), `voices/` (saved voices) and `out/` (results).
 Nothing is installed globally. Delete `.venvs/` to reset.
 
-MIT license. Qwen3-TTS is Apache-2.0.
+MIT license. Qwen3-TTS is Apache-2.0, Whisper `large-v3-turbo` is MIT.
