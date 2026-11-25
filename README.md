@@ -11,18 +11,18 @@ Give it a 10-second recording of a voice and let it say anything, or turn an aud
 
 ```bash
 git clone https://github.com/ari92p/easy-tts && cd easy-tts
-./setup.sh                          # once (Windows: double-click setup.cmd)
-.venvs/qwen/bin/python easy-tts.py  # Windows: .venvs\qwen\Scripts\python.exe easy-tts.py
+scripts/setup.sh     # once (Windows: double-click scripts\setup.cmd)
+./easy-tts           # Windows: easy-tts.cmd
 ```
 
 `easy-tts` on its own guides you: it asks for the language, lets you pick a saved voice or give a new recording (5 to 15 seconds, one person),
 asks for the text and writes the result to `out/`. For a new recording, Whisper writes down what is said (`voices/<name>/ref.txt`, you can correct it there by hand).
 The first run downloads the models (about 6 GB), once.
 
-`setup.sh` / `setup.cmd` need nothing on the computer: they fetch `uv`, `uv` fetches Python and the packages, all inside this folder (`.venvs/`).
+`scripts/setup.sh` / `scripts/setup.cmd` need nothing on the computer: they fetch `uv`, `uv` fetches Python and the packages, all inside this folder (`.venvs/`).
 You need a GPU: an NVIDIA card or a Mac with Apple Silicon.
 
-Want a plain `easy-tts` command? On Mac and Linux: `ln -s "$PWD/easy-tts.py" ~/.local/bin/easy-tts` works if your own `python3` is 3.9+ (the examples below use it; otherwise write `.venvs/qwen/bin/python easy-tts.py`).
+The examples below write `easy-tts`: that is `./easy-tts` (Windows: `easy-tts.cmd`) in this folder. For a command that works from anywhere: `ln -s "$PWD/easy-tts" ~/.local/bin/easy-tts`.
 
 ## Run it as command
 
@@ -79,13 +79,13 @@ Options: `--port`, `--voices-dir FOLDER`, `--offline` (never contact Hugging Fac
 
 ### Start files
 
-`start_server.cmd` (Windows) and `start_server.sh` (Mac/Linux) are shortcuts for
+`scripts/start_server.cmd` (Windows) and `scripts/start_server.sh` (Mac/Linux) are shortcuts for
 `easy-tts --serve --host 0.0.0.0 --port 8190`: they go to their own folder first, so you can start them from anywhere.
 
 | System | How to start |
 | --- | --- |
-| Windows | double-click `start_server.cmd` (a console window stays open while the service runs) |
-| Mac / Linux | `./start_server.sh` in a terminal (if it is not executable: `chmod +x start_server.sh`) |
+| Windows | double-click `scripts\start_server.cmd` (a console window stays open while the service runs) |
+| Mac / Linux | `scripts/start_server.sh` in a terminal (if it is not executable: `chmod +x scripts/start_server.sh`) |
 
 - Close the window or press `Ctrl+C` to stop it. If the service stops by itself (for example a job hangs), it starts again after 5 seconds.
 - They listen on **all network interfaces** (`0.0.0.0`) so other computers can reach port 8190. There is no login, so only do that in a network you trust,

@@ -1,7 +1,7 @@
 @echo off
 rem One-time setup for Windows. Needs nothing installed: it fetches uv, uv fetches Python and the packages.
 rem Everything goes into .venvs\ in this folder. The models are downloaded on first use.
-cd /d "%~dp0"
+cd /d "%~dp0.."
 set "PY=.venvs\qwen\Scripts\python.exe"
 if exist ".venvs\qwen\.tts-ready" (
   echo #easy-tts: Already set up. Start it with: easy-tts.cmd
@@ -14,7 +14,7 @@ if not defined UV (
   set "UV=.venvs\uv\bin\uv.exe"
   if not exist ".venvs\uv\bin\uv.exe" (
     echo #easy-tts: Installing uv ^(the Python setup tool^)...
-    set "UV_INSTALL_DIR=%~dp0.venvs\uv\bin"
+    set "UV_INSTALL_DIR=%CD%\.venvs\uv\bin"
     set "UV_NO_MODIFY_PATH=1"
     powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex" >nul
   )

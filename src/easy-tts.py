@@ -21,7 +21,7 @@ import subprocess
 import sys
 import tempfile
 
-ROOT = pathlib.Path(__file__).resolve().parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
 VENVS = ROOT / ".venvs"
 VOICES = ROOT / "voices"

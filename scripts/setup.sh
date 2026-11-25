@@ -1,7 +1,7 @@
 #!/bin/sh
 # One-time setup for Mac and Linux. Needs nothing installed: it fetches uv, uv fetches Python and the packages.
 # Everything goes into .venvs/ in this folder. The models are downloaded on first use.
-cd "$(dirname "$0")" || exit 1
+cd "$(dirname "$0")/.." || exit 1
 say() { echo "#easy-tts: $*"; }
 PY=.venvs/qwen/bin/python
 if [ -f .venvs/qwen/.tts-ready ]; then say "Already set up. Start it with: ./easy-tts"; exit 0; fi

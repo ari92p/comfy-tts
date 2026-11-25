@@ -1,3 +1,3 @@
 #!/bin/sh
-# Short start for Mac and Linux: ./easy-tts  (runs easy-tts.py with the Python that setup.sh made)
-cd "$(dirname "$0")" && exec .venvs/qwen/bin/python easy-tts.py "$@"
+# Short start for Mac and Linux: ./easy-tts  (runs src/easy-tts.py with the Python that setup.sh made)
+cd "$(dirname "$0")" && exec .venvs/qwen/bin/python src/easy-tts.py "$@"
