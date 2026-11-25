@@ -118,8 +118,11 @@ Tested on Windows with an NVIDIA RTX 5080 (16 GB), each time generating audio an
 - the command line using a voice that was saved by the service (same folder format);
 - cloning with `chatterbox`, including setting up its environment from scratch.
 
-**Not tested yet:** `qwen3-tts-0.6b`, the other service endpoints (uploading voices, samples, renaming, deleting), switching the real
-service over (the old one was left untouched), and everything on Mac or Linux or CPU only.
+Tested on a Mac (Apple M5, 24 GB, Apple GPU): cloning with `qwen3-tts-0.6b`, set up from scratch with the system Python 3.9, automatic transcript,
+German text. 7 seconds of audio took 11 seconds, and the text came back word for word when transcribed again.
+
+**Not tested yet:** built-in speakers and `--serve` on the Mac, `qwen3-tts-1.7b` and `chatterbox` on the Mac, the other service endpoints
+(uploading voices, samples, renaming, deleting), switching the real service over (the old one was left untouched), and Linux or CPU only.
 The size hints in the guided mode are rules of thumb, not measurements. If something fails, please open an issue with the output.
 
 In a German round-trip test (generate, then transcribe again) Qwen reproduced the text word for word, while Chatterbox once said "Kaffee-Karte" for "Grafikkarte".
@@ -136,7 +139,8 @@ watermark; Qwen does not, so say when audio is synthetic.
 - **`error: ... ran away` / a piece fails 3 times:** the model sometimes babbles on a sentence. Reword that sentence, shorten it, or change `--seed`.
 - **CUDA out of memory:** use `qwen3-tts-0.6b`, or close other programs using the GPU.
 - **Windows with an NVIDIA card but it runs on the CPU:** delete `.venvs/` and run again; the setup installs the CUDA build of PyTorch.
-- **Mac or CPU is slow:** expected, these models are made for GPUs. The 0.6B model is the one to use there.
+- **Mac or CPU is slow:** the 0.6B model ran faster than real time on an Apple M5; CPU only is much slower. Use the 0.6B model there.
+- **The first Mac run takes minutes before it speaks:** that is the model download (about 2.5 GB), later runs start in seconds.
 - **The service answers "busy" (503):** it runs one job at a time; the client should wait and try again.
 
 ## How it works
