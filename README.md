@@ -1,4 +1,4 @@
-# easy-tts-voice
+# easy-tts
 
 Text to speech on your own computer, with voice cloning: give it a 10-second recording of a voice and let it say anything.
 No account, no API key, everything runs locally.
@@ -6,7 +6,7 @@ No account, no API key, everything runs locally.
 ## Quick start
 
 ```bash
-git clone https://github.com/ari92p/easy-tts-voice && cd easy-tts-voice
+git clone https://github.com/ari92p/easy-tts && cd easy-tts
 python3 tts.py
 ```
 

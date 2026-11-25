@@ -633,5 +633,5 @@ if __name__ == "__main__":
     prefetch()
     threading.Thread(target=janitor, daemon=True).start()
     threading.Thread(target=watchdog, daemon=True).start()
-    log(f"easy-tts-voice service on {a.host}:{a.port}, voices in {VOICES}")
+    log(f"easy-tts service on {a.host}:{a.port}, voices in {VOICES}")
     uvicorn.run(app, host=a.host, port=a.port, log_level="warning")

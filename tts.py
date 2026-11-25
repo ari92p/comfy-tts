@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""easy-tts-voice: text to speech on your own computer, with voice cloning from a short recording.
+"""easy-tts: text to speech on your own computer, with voice cloning from a short recording.
 
   python3 tts.py                                    guided mode: asks a few questions, helps you pick a model
   python3 tts.py --clone me.wav --text "Hello!"     clone your voice from a recording (writes out/me-<time>.wav)
@@ -41,7 +41,7 @@ LANG_NAMES = {"en": "English", "de": "German", "fr": "French", "es": "Spanish", 
 
 
 def banner():
-    say("easy-tts-voice - text to speech on your own computer, with voice cloning")
+    say("easy-tts - text to speech on your own computer, with voice cloning")
 
 
 def say(*a):
@@ -349,7 +349,7 @@ def serve(a, hw):
     if a.whisper:
         env["VOICE_WHISPER"] = a.whisper
     cmd = [str(env_python("qwen")), str(SRC / "server.py"), "--host", a.host, "--port", str(a.port)]
-    say(f"easy-tts-voice service on http://{a.host}:{a.port}  (Ctrl+C stops it)")
+    say(f"easy-tts service on http://{a.host}:{a.port}  (Ctrl+C stops it)")
     while True:
         try:
             code = run(cmd, env=env).returncode
@@ -367,7 +367,7 @@ def serve(a, hw):
 
 def main():
     ap = argparse.ArgumentParser(
-        description="easy-tts-voice: text to speech on your own computer, with voice cloning from a short recording. No arguments = guided mode.",
+        description="easy-tts: text to speech on your own computer, with voice cloning from a short recording. No arguments = guided mode.",
         epilog="Examples:  python3 tts.py --clone me.wav --save-voice me --text \"Hello world\" --lang en\n"
                "          python3 tts.py --voice me --text \"Hello again\" --lang en",
         formatter_class=argparse.RawDescriptionHelpFormatter)
