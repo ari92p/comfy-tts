@@ -44,11 +44,10 @@ and makes it again if it does not match the text (the model sometimes repeats a 
 | `--clone FILE` | clone a voice from this recording (wav, mp3, m4a, ...); `--save-voice NAME` keeps it |
 | `--lang de` | language of the text: en de fr es it pt ru zh ja ko (required) |
 | `--text "..."`, `--text-file FILE`, or the text as an argument | what to say |
-| `--clone-text "..."` | with `--clone`: the exact words of your recording (otherwise Whisper listens for you) |
 | `--speed 1.2` | speaking speed: 1.0 as the voice speaks, above 1 faster, below 1 slower (0.5 to 2). The model has no speed setting, so this stretches the audio without changing the pitch: fine up to about 1.3, beyond that it starts to sound processed |
 | `--seed N` | same seed and text give the same result; change it for another take |
 | `-o FILE` | output file (`.mp3` and others work if ffmpeg is installed) |
-| `--fast` | skip the listen-back check (about 10 seconds quicker, but a repeated or invented word can stay in) |
+| `--fast` | skip the listen-back check: much quicker, but a repeated or invented word can stay in |
 | `--transcribe AUDIO` | voice to text: writes what is said in an audio file to `out/<name>-<time>.txt` (Whisper). Add `--lang de` if you know the language, `-o text.txt` to choose the file |
 | `--list-voices` | show the voices you saved |
 | `-v` | show everything the setup and the voice engine print |

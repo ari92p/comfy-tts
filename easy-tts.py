@@ -254,11 +254,9 @@ class Working:
 
 # ---------- the actual work ----------
 
-def prepare_voice(model, voice_dir, ref, ref_text, lang):
+def prepare_voice(model, voice_dir, ref, lang):
     args = ["prepare", "--ref", ref, "--voice-dir", str(voice_dir), "--lang", lang]
-    if ref_text:
-        args += ["--ref-text", ref_text]
-    quiet = cached(WHISPER_REPO, "model.bin") or bool(ref_text)
+    quiet = cached(WHISPER_REPO, "model.bin")
     if not quiet:
         status("Downloading the speech recognition model (about 1.5 GB, first time only)...")
     engine(model, args, quiet)
@@ -347,7 +345,7 @@ def make_clip(a, hw, text, lang, voice="", clone=""):
     wav, out = final_output(out, model)
     ensure_env(model, hw, True)
     if ref:
-        prepare_voice(model, voice_dir, ref, a.clone_text, lang)
+        prepare_voice(model, voice_dir, ref, lang)
     speak(model, voice_dir, text, wav, lang, a.seed, a.device, a.fast, a.speed)
     finish_output(wav, out)
     status(f"Saved: {rel(out)}")
@@ -366,7 +364,7 @@ def new_voice(model, lang):
     default = voice_name(pathlib.Path(ref).stem) or "voice"
     voice = voice_name(ask("Name", default)) or default
     voice_dir = VOICES / voice
-    prepare_voice(model, voice_dir, ref, "", lang)
+    prepare_voice(model, voice_dir, ref, lang)
     return voice
 
 
@@ -445,7 +443,6 @@ def main():
     ap.add_argument("-o", "--out", help="output file (default: out/<voice>-<time>.wav; .mp3 works if ffmpeg is installed)")
     ap.add_argument("--lang", help="language of the text: en de fr es it pt ru zh ja ko (required with --voice/--clone)")
     ap.add_argument("--model", default="auto", choices=["auto"] + list(MODELS), help=argparse.SUPPRESS)
-    ap.add_argument("--clone-text", help="with --clone: the exact words spoken in the recording (default: Whisper listens for you)")
     ap.add_argument("--seed", type=int, help="same seed + same text = same result; change it for a different take")
     ap.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"])
     ap.add_argument("--speed", type=float, default=1.0, metavar="X", help="speaking speed: 1.0 = as the voice speaks, 1.2 = faster, 0.8 = slower (0.5 to 2)")
