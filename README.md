@@ -134,13 +134,16 @@ Tested on Windows with an NVIDIA RTX 5080 (16 GB), each time generating audio an
 - `--serve`, set up from scratch, on a second port next to the old service and with a copy of its 16 voices: `/health`, `/speakers`, `/voices`,
   `/generate` with a speaker (`ryan`, with `instruct`) and with an existing cloned voice, `/transcribe`;
 - the command line using a voice that was saved by the service (same folder format);
+- the same again with the final code layout (`src/`), set up from scratch with `tts.py`, plus the service endpoints for extra samples
+  (add, listen, choose as template, delete), uploading, renaming and deleting a voice.
 
 Tested on a Mac (Apple M5, 24 GB, Apple GPU), set up from scratch with the system Python 3.9: cloning with `qwen3-tts-1.7b` and a German
 text of 256 characters took 26 seconds for 15 seconds of audio, and the text came back word for word when transcribed again. All nine
 built-in speakers and 14 saved voices also ran there; the German clips came back word for word apart from one word in one clip.
+`--serve --whisper small` ran there too: uploading a voice (with automatic transcript), `/generate` with a speaker and with the cloned voice,
+`/transcribe`, renaming, extra samples and deleting.
 
-**Not tested yet:** `--serve` on the Mac, the service endpoints for extra samples, switching the real service over
-(the old one was left untouched), the code layout after it was moved into `src/` on Windows, and Linux or CPU only.
+**Not tested yet:** switching the real service over (the old one was left untouched), and Linux or CPU only.
 The GPU memory hint (8+ GB) is a rule of thumb, not a measurement. If something fails, please open an issue with the output.
 
 ## Please use it responsibly
