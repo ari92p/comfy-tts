@@ -2,7 +2,7 @@
 """easy-tts: text to speech on your own computer, with voice cloning from a short recording.
 
   easy-tts                                    guided: asks for the language, the voice and the text
-  easy-tts --voice klara --lang de "Hello!"   one command: every parameter given (also: echo "Hello!" | easy-tts --voice ... --lang ...)
+  easy-tts --voice me --lang en "Hello!"      one command: every parameter given (also: echo "Hello!" | easy-tts --voice ... --lang ...)
   easy-tts --clone me.wav --save-voice me --lang en "Hello!"    clone a voice from a recording and keep it
 
 Run with --help for all options. This file only needs a plain Python 3.9+; the models run in private virtualenvs
@@ -424,9 +424,9 @@ def main():
     ap = argparse.ArgumentParser(prog="easy-tts",
         description="easy-tts: text to speech on your own computer, with voice cloning from a short recording. "
                     "Run just `easy-tts` to be guided; with arguments give the voice and the language.",
-        epilog="Examples:  tts                                          guided\n"
-               "          easy-tts --voice klara --lang de \"Hallo Welt\"     one command\n"
-               "          echo \"Hallo\" | easy-tts --voice klara --lang de   text from stdin\n"
+        epilog="Examples:  easy-tts                                     guided\n"
+               "          easy-tts --voice me --lang en \"Hello world\"     one command\n"
+               "          echo \"Hello\" | easy-tts --voice me --lang en   text from stdin\n"
                "          easy-tts --clone me.wav --save-voice me --lang en \"Hello\"",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("words", nargs="*", metavar="TEXT", help="what to say (or use --text, --text-file, or pipe it in)")

@@ -28,10 +28,10 @@ on Windows `irm https://astral.sh/uv/install.ps1 | iex`) and a GPU: an NVIDIA ca
 With arguments nothing is asked: give the voice and the language, every time.
 
 ```bash
-easy-tts --voice klara --lang de "Hallo, das ist meine Stimme."        # a saved voice
-echo "Hallo aus der Pipe" | easy-tts --voice klara --lang de            # text from stdin
-easy-tts --voice klara --lang de --text-file chapter1.txt -o chapter1.wav
-easy-tts --clone me.wav --save-voice me --lang en "Hello"                # clone a recording and keep it as "me"
+easy-tts --clone me.wav --save-voice me --lang en "Hello, this is my voice."    # clone a recording and keep it as "me"
+easy-tts --voice me --lang en "Hello again."                                   # use the saved voice
+echo "Hello from a pipe" | easy-tts --voice me --lang en                       # text from stdin
+easy-tts --voice me --lang en --text-file chapter1.txt -o chapter1.wav         # a long text from a file
 ```
 
 If something is missing, it says what (and lists your saved voices). Results go to `out/` (or where `-o` says).
