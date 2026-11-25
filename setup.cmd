@@ -4,7 +4,7 @@ rem Everything goes into .venvs\ in this folder. The models are downloaded on fi
 cd /d "%~dp0"
 set "PY=.venvs\qwen\Scripts\python.exe"
 if exist ".venvs\qwen\.tts-ready" (
-  echo #easy-tts: Already set up. Start it with: %PY% easy-tts.py
+  echo #easy-tts: Already set up. Start it with: easy-tts.cmd
   goto :end
 )
 
@@ -34,7 +34,7 @@ if not errorlevel 1 (
 )
 "%UV%" pip install --quiet --python "%PY%" -r src\requirements.txt || goto :end
 echo ok> .venvs\qwen\.tts-ready
-echo #easy-tts: Done. Start it with: %PY% easy-tts.py
+echo #easy-tts: Done. Start it with: easy-tts.cmd
 
 :end
 pause
