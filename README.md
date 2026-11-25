@@ -63,7 +63,22 @@ A small HTTP service for other programs: saved voices with several samples, Whis
 The endpoints are listed at the top of [src/server.py](src/server.py). On start it downloads missing models (about 4.7 GB, with progress bars),
 then answers one job at a time, frees the GPU after 5 minutes without requests and restarts itself if a job hangs.
 Options: `--port`, `--voices-dir FOLDER`, `--whisper small`, `--offline` (never contact Hugging Face).
-`start_server.cmd` (Windows) and `start_server.sh` (Mac/Linux) start it and keep it running.
+
+### Start files
+
+`start_server.cmd` (Windows) and `start_server.sh` (Mac/Linux) are shortcuts for
+`tts.py --serve --host 0.0.0.0 --port 8190`: they go to their own folder first, so you can start them from anywhere.
+
+| System | How to start |
+| --- | --- |
+| Windows | double-click `start_server.cmd` (a console window stays open while the service runs) |
+| Mac / Linux | `./start_server.sh` in a terminal (if it is not executable: `chmod +x start_server.sh`) |
+
+- Close the window or press `Ctrl+C` to stop it. If the service stops by itself (for example a job hangs), it starts again after 5 seconds.
+- They listen on **all network interfaces** (`0.0.0.0`) so other computers can reach port 8190. There is no login, so only do that in a network you trust,
+  or change `--host 0.0.0.0` to `--host 127.0.0.1` in the file to keep it on your own computer.
+- Edit the last line of the file to change the port, `--voices-dir`, `--whisper` or to add `--offline`.
+- To start it with the computer, run the file from Windows Task Scheduler (trigger: at log on) or from the login items of your system.
 
 ## Languages
 
