@@ -140,7 +140,7 @@ def ensure_env(model, hw, assume_yes):
         shutil.rmtree(venv)     # a half-finished earlier attempt
     py = str(env_python(backend))
     quiet_run([uv, "venv", "--python", MODELS[model]["python"], str(venv)])
-    reqs = ["-r", str(ROOT / "requirements" / f"{backend}.txt")]
+    reqs = ["-r", str(SRC / "requirements.txt")]
     nvidia = hw["kind"] == "cuda"
     if backend == "qwen" and nvidia and IS_WIN:
         # on Windows the default PyPI torch is CPU-only
