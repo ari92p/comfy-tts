@@ -66,7 +66,8 @@ Licenses: Qwen3-TTS is Apache-2.0. This repository is MIT.
 ```
 tts.py               the program: guided mode and one-command mode
 start_server.cmd     keeps the voice service running (Windows)
-start_server.sh      the same for Mac and Linux
+start_server.command double-click on a Mac to start the voice service
+start_server.sh      the same for Linux (run it in a terminal)
 src/engine.py        runs inside the private environment: prepares references, speaks
 src/server.py        the HTTP voice service
 requirements/        the Python packages of the private environment
@@ -114,16 +115,20 @@ This is the HTTP service the Studio uses for its Voice page: speakers, saved voi
 if a job hangs. The endpoints are listed at the top of [src/server.py](src/server.py). It uses Qwen3-TTS 1.7B by default (Base for cloning, CustomVoice for speakers).
 
 Options: `--port`, `--voices-dir FOLDER` (where voices are kept, default `voices/`), `--whisper small` (a much smaller transcript model than the default `large-v3-turbo`), `--offline` (never contact Hugging Face).
-To keep it running, use `start_server.cmd` (Windows) or `start_server.sh` (Mac/Linux); both restart the service if it ends.
+To keep it running, use `start_server.cmd` (Windows), `start_server.command` (Mac, double-click) or `start_server.sh` (Linux); they restart the service if it ends.
+If macOS refuses to open the `.command` file after a zip download, right-click it and choose Open once.
 Voices cloned on the command line and voices saved through the service share the same folder format, so both see each other's voices.
 
-### Replacing an existing voice service on the PC
+### Replacing an older `voice_server.py` setup
 
-Moving from the older `voice_server.py` setup (Windows, `C:\AI\tts`):
+If you already run the older single-file `voice_server.py` (same HTTP API), you can swap it without touching the programs that talk to it:
 
-1. Test first, next to the running service: `python tts.py --serve --port 8191 --voices-dir C:\AI\tts\voices --offline`, then point a client at port 8191.
-2. Keep your voices: `--voices-dir C:\AI\tts\voices` uses the existing folder as it is. Models already cached in `C:\AI\tts\hf` are used if `HF_HOME` points there.
-3. Switch over: stop the old scheduled task, run `start_server.cmd` (adjust the `--voices-dir` line in it), and change the task to start `start_server.cmd` at logon.
+1. Keep your voices: start the new service with `--voices-dir <your existing voices folder>`; it reads that folder as it is.
+2. Keep your start mechanism (a scheduled task, a service, a start script): only change the command it runs to
+   `python tts.py --serve --host 0.0.0.0 --port <the old port> --voices-dir <voices folder> -y`.
+   On Windows, put it in a `.cmd` file like `start_server.cmd` and add `--offline` if the PC must never contact Hugging Face
+   (the models then have to be in the Hugging Face cache, point `HF_HOME` at it).
+3. Back up the old script and the voices folder first, and test on a second port (`--port 8191`) before you switch.
 
 ## What has been tested
 
