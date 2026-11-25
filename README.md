@@ -17,7 +17,7 @@ You need Python 3.9+, [`uv`](https://docs.astral.sh/uv/) (`brew install uv`, or 
 on Windows `irm https://astral.sh/uv/install.ps1 | iex`) and a GPU: an NVIDIA card or a Mac with Apple Silicon.
 The first run downloads PyTorch and the model (about 4 GB for the model), once.
 
-## Use it
+## Run it as command
 
 Choose exactly one voice:
 
@@ -54,6 +54,19 @@ Results go to `out/` (or where `-o` says). Long texts are spoken sentence by sen
 | `--list-speakers`, `--list-voices` | show what you can choose |
 | `-y` | set up the Python environment without asking |
 
+## Run it as service
+
+```bash
+python3 tts.py --serve                      # http://127.0.0.1:8190
+python3 tts.py --serve --host 0.0.0.0       # reachable from other computers (no login, use a firewall)
+```
+
+A small HTTP service for other programs: speakers, saved voices with several samples, Whisper transcripts, `POST /generate`.
+The endpoints are listed at the top of [src/server.py](src/server.py). On start it downloads missing models (about 8.4 GB for the two Qwen models plus Whisper, with progress bars),
+then answers one job at a time, frees the GPU after 5 minutes without requests and restarts itself if a job hangs.
+Options: `--port`, `--voices-dir FOLDER`, `--whisper small`, `--offline` (never contact Hugging Face).
+`start_server.cmd` (Windows) and `start_server.sh` (Mac/Linux) start it and keep it running.
+
 ## Speakers and languages
 
 Built-in speakers: `aiden`, `ryan` (English), `vivian`, `serena`, `uncle_fu`, `dylan`, `eric` (Chinese), `ono_anna` (Japanese), `sohee` (Korean).
@@ -85,41 +98,5 @@ Already have a model? Put its cache folder (e.g. `models--Qwen--Qwen3-TTS-12Hz-1
 
 Inside the repository folder only this is created (none of it goes into git): `.venvs/` (the Python environment), `voices/` (saved voices) and `out/` (results).
 Nothing is installed globally. Delete `.venvs/` to reset.
-
-The audio is exactly what the model makes, 24 kHz, 16 bit WAV, nothing resampled. If a program insists on 48 kHz:
-`ffmpeg -i in.wav -ar 48000 -c:a pcm_s24le out.wav` makes it compatible, but adds no detail.
-
-## Run it as a voice service
-
-```bash
-python3 tts.py --serve                      # http://127.0.0.1:8190
-python3 tts.py --serve --host 0.0.0.0       # reachable from other computers (no login, use a firewall)
-```
-
-A small HTTP service for other programs: speakers, saved voices with several samples, Whisper transcripts, `POST /generate`.
-The endpoints are listed at the top of [src/server.py](src/server.py). On start it downloads missing models (about 8.4 GB for the two Qwen models plus Whisper, with progress bars),
-then answers one job at a time, frees the GPU after 5 minutes without requests and restarts itself if a job hangs.
-Options: `--port`, `--voices-dir FOLDER`, `--whisper small`, `--offline` (never contact Hugging Face).
-`start_server.cmd` (Windows) and `start_server.sh` (Mac/Linux) start it and keep it running.
-
-## Troubleshooting
-
-- **A `SoX could not be found` warning:** harmless.
-- **`ran away` or a piece fails 3 times:** the model sometimes babbles on one sentence. Reword or shorten it, or change `--seed`.
-- **CUDA out of memory:** close other programs that use the GPU. The model needs several GB on its own.
-- **Windows with an NVIDIA card but it runs on the CPU:** delete `.venvs/` and run again; the setup installs the CUDA build of PyTorch.
-- **The first run is slow before it speaks:** that is the model download. Later runs start in seconds.
-- **The service answers 503 "busy":** it runs one job at a time; try again.
-
-## Tested
-
-Windows with an NVIDIA RTX 5080 (16 GB) and a Mac with Apple M5 (24 GB, Apple GPU): cloning, all built-in speakers and the voice service,
-each time checked by transcribing the generated audio again with Whisper. On the Mac, 15 seconds of speech took about 26 seconds.
-**Not tested:** Linux and CPU only. If something fails, please open an issue with the output.
-
-## Please use it responsibly
-
-Only clone voices you have the right to clone: your own, or someone who clearly agreed. Don't use cloned voices to deceive,
-impersonate or harass anyone, and check the laws and platform rules where you publish. The audio carries no watermark, so say when it is synthetic.
 
 MIT license. Qwen3-TTS is Apache-2.0.
