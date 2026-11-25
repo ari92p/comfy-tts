@@ -25,13 +25,14 @@ on Windows `irm https://astral.sh/uv/install.ps1 | iex`) and a GPU: an NVIDIA ca
 
 ## Run it as command
 
-With arguments nothing is asked: give the voice and the language, every time.
+With arguments nothing is asked. A new recording needs its language once (`--lang`); a saved voice remembers it.
 
 ```bash
-easy-tts --clone me.wav --save-voice me --lang en "Hello, this is my voice."    # clone a recording and keep it as "me"
-easy-tts --voice me --lang en "Hello again."                                   # use the saved voice
-echo "Hello from a pipe" | easy-tts --voice me --lang en                       # text from stdin
-easy-tts --voice me --lang en --text-file chapter1.txt -o chapter1.wav         # a long text from a file
+easy-tts --clone me.wav --save me --lang en "Hello, this is my voice."    # clone a recording and keep it as "me" (with its language)
+easy-tts --clone me.wav --save me --lang en                                    # only keep the voice, no text: nothing is spoken
+easy-tts --voice me "Hello again."                                             # use the saved voice, no --lang needed
+echo "Hello from a pipe" | easy-tts --voice me                                 # text from stdin
+easy-tts --voice me --text-file chapter1.txt -o chapter1.wav                   # a long text from a file
 ```
 
 If something is missing, it says what (and lists your saved voices). Results go to `out/` (or where `-o` says).
@@ -41,17 +42,17 @@ and makes it again if it does not match the text (the model sometimes repeats a 
 | Option | What it does |
 | --- | --- |
 | `--voice NAME` | a saved voice |
-| `--clone FILE` | clone a voice from this recording (wav, mp3, m4a, ...); `--save-voice NAME` keeps it |
-| `--lang de` | language of the text: en de fr es it pt ru zh ja ko (required) |
+| `--clone FILE` | clone a voice from this recording (wav, mp3, m4a, ...); `--save NAME` keeps it |
+| `--lang de` | language of the text: en de fr es it pt ru zh ja ko. Required with `--clone`; a saved voice remembers it (give `--lang` to speak another language with that voice) |
 | `--text "..."`, `--text-file FILE`, or the text as an argument | what to say |
 | `--speed 1.2` | speaking speed: 1.0 as the voice speaks, above 1 faster, below 1 slower (0.5 to 2). The model has no speed setting, so this stretches the audio without changing the pitch: fine up to about 1.3, beyond that it starts to sound processed |
 | `--seed N` | same seed and text give the same result; change it for another take |
 | `-o FILE` | output file (`.mp3` and others work if ffmpeg is installed) |
 | `--fast` | skip the listen-back check: much quicker, but a repeated or invented word can stay in |
 | `--transcribe AUDIO` | voice to text: writes what is said in an audio file to `out/<name>-<time>.txt` (Whisper). Add `--lang de` if you know the language, `-o text.txt` to choose the file |
-| `--list-voices` | show the voices you saved |
+| `--list-voices` | show the voices you saved, with their language |
 
-Saved voices live in `voices/<name>/` (`ref.wav` and `ref.txt`).
+Saved voices live in `voices/<name>/`: `ref.wav`, `ref.txt` (what is said) and `meta.json` (the language).
 
 ## Voice to text
 

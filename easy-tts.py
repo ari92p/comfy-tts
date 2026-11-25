@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """easy-tts: text to speech on your own computer, with voice cloning from a short recording.
 
-  easy-tts                                    guided: asks for the language, the voice and the text
-  easy-tts --voice me --lang en "Hello!"      one command: every parameter given (also: echo "Hello!" | easy-tts --voice ... --lang ...)
-  easy-tts --clone me.wav --save-voice me --lang en "Hello!"    clone a voice from a recording and keep it
+  easy-tts                                    guided: asks for the voice, the language (new voices) and the text
+  easy-tts --voice me "Hello!"                one command with a saved voice (it remembers its language; also: echo "Hello!" | easy-tts --voice me)
+  easy-tts --clone me.wav --save me --lang en "Hello!"    clone a voice from a recording and keep it (with its language)
 
 Run with --help for all options. This file only needs a plain Python 3.9+; the models run in private virtualenvs
 (.venvs/) that are created for you on first use, see README.md.
 """
 import argparse
 import datetime
+import json
 import os
 import pathlib
 import platform
@@ -198,6 +199,25 @@ def saved_voices():
     return list(voice_dirs())
 
 
+def voice_lang(d):
+    """The language saved with a voice (voices/<name>/meta.json), or ''."""
+    try:
+        return json.loads((d / "meta.json").read_text(encoding="utf-8")).get("lang", "")
+    except (OSError, ValueError):
+        return ""
+
+
+def set_voice_lang(d, lang):
+    """Keep the language with the voice; other entries of meta.json (written by the voice service) stay."""
+    if lang and lang != "auto":
+        try:
+            meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            meta = {}
+        meta["lang"] = lang
+        (d / "meta.json").write_text(json.dumps(meta, indent=1, ensure_ascii=False), encoding="utf-8")
+
+
 def find_voice(name):
     """A saved voice by name -> (name, folder), or None."""
     name = voice_name(name)
@@ -318,6 +338,21 @@ def transcribe_audio(a, hw):
     status(f"Saved: {rel(out)}")
 
 
+def save_voice_only(a, hw, lang):
+    """--clone FILE --save NAME without a text: prepare and keep the voice, make no audio."""
+    ref = clean_path(a.clone)
+    if not os.path.isfile(ref):
+        die(f"recording not found: {ref}")
+    name = voice_name(a.save)
+    if not name:
+        die("--save needs a name")
+    model = recommend(lang, hw)
+    ensure_env(model, hw, True)
+    prepare_voice(model, VOICES / name, ref, lang)
+    set_voice_lang(VOICES / name, lang)
+    status(f"Voice saved: {name} ({lang}). Use it: easy-tts --voice {name} \"your text\"")
+
+
 def make_clip(a, hw, text, lang, voice="", clone=""):
     """Speak `text` with a saved voice or a recording, write the file, print where it is."""
     model = a.model if a.model != "auto" else recommend(lang, hw)
@@ -335,13 +370,15 @@ def make_clip(a, hw, text, lang, voice="", clone=""):
         ref = clean_path(clone)
         if not os.path.isfile(ref):
             die(f"recording not found: {ref}")
-        label = voice_name(a.save_voice) if a.save_voice else "_last"
+        label = voice_name(a.save) if a.save else "_last"
         voice_dir = VOICES / label
     out = pathlib.Path(a.out) if a.out else OUT / f"{label.strip('_') or 'voice'}-{datetime.datetime.now():%Y%m%d-%H%M%S}.wav"
     wav, out = final_output(out, model)
     ensure_env(model, hw, True)
     if ref:
         prepare_voice(model, voice_dir, ref, lang)
+        if a.save:
+            set_voice_lang(voice_dir, lang)
     speak(model, voice_dir, text, wav, lang, a.seed, a.device, a.fast, a.speed)
     finish_output(wav, out)
     status(f"Saved: {rel(out)}")
@@ -361,34 +398,48 @@ def new_voice(model, lang):
     voice = voice_name(ask("Name", default)) or default
     voice_dir = VOICES / voice
     prepare_voice(model, voice_dir, ref, lang)
+    set_voice_lang(voice_dir, lang)
     return voice
 
 
-def dialog(hw):
-    """The guided run: language, voice (saved or a new recording), text. -> (lang, voice, text)"""
-    banner()
-    say("")
-    lang = ask(f"Language ({', '.join(QWEN_LANGS)})", "en").lower()
+def ask_lang(default="en"):
+    lang = ask(f"Language ({', '.join(QWEN_LANGS)})", default).lower()
     while lang not in QWEN_LANGS:
-        lang = ask("Please pick one of the list", "en").lower()
-    voice = ""
-    voices = saved_voices()
+        lang = ask("Please pick one of the list", default).lower()
+    return lang
+
+
+def dialog(hw):
+    """The guided run: voice (saved or a new recording), language, text. -> (lang, voice, text)"""
+    banner()
+    voice, lang = "", ""
+    dirs = voice_dirs()
+    voices = list(dirs)
     if voices:
         say("\nVoices")
         for i, v in enumerate(voices, 1):
-            say(f"  {i:>2}  {v}")
+            say(f"  {i:>2}  {v:<22}{voice_lang(dirs[v])}")
         say("   n  new recording")
         pick = ask("Choose", "n").strip().lower()
         hit = (voices[int(pick) - 1], None) if pick.isdigit() and 1 <= int(pick) <= len(voices) else find_voice(pick) if pick != "n" else None
         voice = hit[0] if hit else ""
+        lang = voice_lang(dirs[voice]) if voice else ""
+    if not lang:                       # a new recording, or an older voice without a language
+        say("")
+        lang = ask_lang()
     model = recommend(lang, hw)
     ensure_env(model, hw, True)
-    if not voice:
+    new = not voice
+    if new:
         voice = new_voice(model, lang)
+    elif not voice_lang(dirs[voice]):
+        set_voice_lang(dirs[voice], lang)
     say("")
-    t = ""
-    while not t:
+    t = ask("Text (Enter = only save the voice):" if new else "Text:")
+    while not t and not new:
         t = ask("Text:")
+    if not t:
+        return lang, voice, ""
     return lang, voice, read_text_file(t) if t.lower().endswith(".txt") and os.path.isfile(clean_path(t)) else t
 
 
@@ -425,18 +476,18 @@ def main():
         description="easy-tts: text to speech on your own computer, with voice cloning from a short recording. "
                     "Run just `easy-tts` to be guided; with arguments give the voice and the language.",
         epilog="Examples:  easy-tts                                     guided\n"
-               "          easy-tts --voice me --lang en \"Hello world\"     one command\n"
-               "          echo \"Hello\" | easy-tts --voice me --lang en   text from stdin\n"
-               "          easy-tts --clone me.wav --save-voice me --lang en \"Hello\"",
+               "          easy-tts --voice me \"Hello world\"               one command\n"
+               "          echo \"Hello\" | easy-tts --voice me             text from stdin\n"
+               "          easy-tts --clone me.wav --save me --lang en \"Hello\"",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("words", nargs="*", metavar="TEXT", help="what to say (or use --text, --text-file, or pipe it in)")
     ap.add_argument("--clone", metavar="FILE", help="clone a voice from this recording: 5-15 s of one speaker (wav, mp3, m4a, ...)")
-    ap.add_argument("--voice", help="use a voice saved earlier with --save-voice")
-    ap.add_argument("--save-voice", metavar="NAME", help="keep the prepared recording under this name for later (--voice NAME)")
+    ap.add_argument("--voice", help="use a voice saved earlier (see --save)")
+    ap.add_argument("--save", metavar="NAME", help="with --clone: keep the voice under this name (--voice NAME). Without a text, it only saves the voice")
     ap.add_argument("--text", help="what to say")
     ap.add_argument("--text-file", help="read what to say from a text file")
     ap.add_argument("-o", "--out", help="output file (default: out/<voice>-<time>.wav; .mp3 works if ffmpeg is installed)")
-    ap.add_argument("--lang", help="language of the text: en de fr es it pt ru zh ja ko (required with --voice/--clone)")
+    ap.add_argument("--lang", help="language of the text: en de fr es it pt ru zh ja ko (required with --clone; a saved voice remembers it)")
     ap.add_argument("--model", default="auto", choices=["auto"] + list(MODELS), help=argparse.SUPPRESS)
     ap.add_argument("--seed", type=int, help="same seed + same text = same result; change it for a different take")
     ap.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"])
@@ -468,7 +519,7 @@ def main():
             say(f"{m}\n   {info['title']}: {info['note']}\n   languages: {', '.join(info['langs'])}")
         return
     if a.list_voices:
-        say("\n".join(saved_voices()) or "No saved voices yet. Run easy-tts to record one.")
+        say("\n".join(f"{v:<22}{voice_lang(d)}" for v, d in voice_dirs().items()) or "No saved voices yet. Run easy-tts to record one.")
         return
     if a.transcribe:
         return transcribe_audio(a, hw)
@@ -493,15 +544,25 @@ def main():
             ap.print_help()
             return
         lang, voice, text = dialog(hw)
+        if not text:
+            return status(f"Voice saved: {voice} ({lang}). Use it: easy-tts --voice {voice} \"your text\"")
         return make_clip(a, hw, text, lang, voice, "")
 
     missing = []
+    lang = (a.lang or "").lower()
     if not (a.voice or a.clone):
         missing.append("--voice NAME (saved: " + (", ".join(saved_voices()) or "none yet") + ") or --clone FILE")
-    if not a.lang:
+    elif a.voice and not lang:
+        hit = find_voice(a.voice)
+        lang = voice_lang(hit[1]) if hit else ""     # a saved voice brings its language
+        if hit and not lang:
+            missing.append(f"--lang ({', '.join(QWEN_LANGS)}); the voice '{hit[0]}' has none saved, it is kept with the voice once you give it")
+    if (a.clone or not (a.voice or a.clone)) and not lang:
         missing.append(f"--lang ({', '.join(QWEN_LANGS)})")
     if missing:
         die("missing " + " and ".join(missing) + ".\nOr just run `easy-tts` and answer the questions.")
+    if a.clone and a.save and a.text is None and not a.words and not a.text_file:
+        return save_voice_only(a, hw, lang)                # no text: only keep the voice
     if a.text is not None:
         text = a.text
     elif a.words:
@@ -515,7 +576,11 @@ def main():
         while not t:
             t = ask("Text:")
         text = read_text_file(t) if t.lower().endswith(".txt") and os.path.isfile(clean_path(t)) else t
-    make_clip(a, hw, text, a.lang.lower(), a.voice or "", a.clone or "")
+    if a.voice and a.lang:
+        hit = find_voice(a.voice)
+        if hit and not voice_lang(hit[1]):
+            set_voice_lang(hit[1], lang)                 # first time a language is given: keep it with the voice
+    make_clip(a, hw, text, lang, a.voice or "", a.clone or "")
 
 
 if __name__ == "__main__":
