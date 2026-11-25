@@ -80,7 +80,7 @@ Options: `--port`, `--voices-dir FOLDER`, `--offline` (never contact Hugging Fac
 ### Start files
 
 `start_server.cmd` (Windows) and `start_server.sh` (Mac/Linux) are shortcuts for
-`easy-tts.py --serve --host 0.0.0.0 --port 8190`: they go to their own folder first, so you can start them from anywhere.
+`easy-tts --serve --host 0.0.0.0 --port 8190`: they go to their own folder first, so you can start them from anywhere.
 
 | System | How to start |
 | --- | --- |
