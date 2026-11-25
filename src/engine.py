@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """The part of tts that runs inside a model's virtualenv. You normally don't call this directly, use tts.py.
 
-  engine.py prepare --backend qwen|chatterbox --ref FILE --voice-dir DIR [--ref-text T] [--lang de] [--device auto]
-      Turns any audio file into a clean 24 kHz mono reference (<= 15 s) in DIR/ref.wav.
-      With the qwen backend it also writes the transcript DIR/ref.txt (given by --ref-text, or heard by Whisper).
-  engine.py speak --backend ... --model REPO --voice-dir DIR --text-file F --out OUT.wav [--lang de] [--seed N]
+  engine.py prepare --ref FILE --voice-dir DIR [--ref-text T] [--lang de]
+      Turns any audio file into a clean 24 kHz mono reference (<= 15 s) in DIR/ref.wav and writes the
+      transcript DIR/ref.txt (given by --ref-text, or heard by Whisper).
+  engine.py speak --model REPO --voice-dir DIR --text-file F --out OUT.wav [--lang de] [--seed N]
       Reads DIR/ref.wav and speaks the text in that cloned voice.
-  engine.py speak --backend qwen --model REPO --speaker NAME [--style "..."] --text-file F --out OUT.wav
+  engine.py speak --model REPO --speaker NAME [--style "..."] --text-file F --out OUT.wav
       Speaks the text with one of the built-in speakers of the Qwen3-TTS CustomVoice model (no reference needed).
 
 Settings that come from a lot of trial and error with Qwen3-TTS: repetition_penalty 1.05, never greedy decoding (it babbles
@@ -45,7 +45,7 @@ def die(msg):
 
 # ---------- device ----------
 
-def pick_device(want, backend):
+def pick_device(want):
     import torch
     if want == "auto":
         if torch.cuda.is_available():
@@ -54,9 +54,7 @@ def pick_device(want, backend):
             want = "mps"
         else:
             want = "cpu"
-    if want == "cuda" and backend == "qwen":
-        return "cuda:0"
-    return want
+    return "cuda:0" if want == "cuda" else want
 
 
 # ---------- reference audio ----------
@@ -85,7 +83,7 @@ def transcribe(y, lang):
     import librosa
     from faster_whisper import WhisperModel
     log("Listening to the reference (Whisper)...")
-    model = WhisperModel(os.environ.get("VOICE_CLONE_WHISPER", "small"), device="cpu", compute_type="int8")
+    model = WhisperModel(os.environ.get("VOICE_WHISPER", "small"), device="cpu", compute_type="int8")
     y16 = librosa.resample(y, orig_sr=REF_SR, target_sr=16000)
     segments, _ = model.transcribe(y16, language=None if lang in ("", "auto") else lang, beam_size=5, word_timestamps=True)
     words = [w for s in segments for w in (s.words or [])]
@@ -115,22 +113,18 @@ def prepare(a):
     if seconds < REF_MIN:
         die(f"the reference is only {seconds:.1f} s long after trimming silence. Use 5 to 15 s of clean speech.")
     text = (a.ref_text or "").strip()
-    if a.backend == "qwen":
-        if seconds > REF_TRIM_ABOVE:
-            if text:
-                cut = REF_KEEP
-                log(f"Reference is {seconds:.0f} s, using the first {cut:.0f} s. (--ref-text should match that part.)")
-            else:
-                text, words = transcribe(y, a.lang)
-                cut = pick_cut(words)
-                text = "".join(w.word for w in words if w.end <= cut + 0.05).strip()
-                log(f"Reference is {seconds:.0f} s, cut to {cut:.1f} s at a sentence end.")
-            y = y[: int(cut * REF_SR)]
-        elif not text:
-            text, _ = transcribe(y, a.lang)
-    elif seconds > REF_TRIM_ABOVE:
-        log(f"Reference is {seconds:.0f} s, using the first {REF_KEEP:.0f} s.")
-        y = y[: int(REF_KEEP * REF_SR)]
+    if seconds > REF_TRIM_ABOVE:
+        if text:
+            cut = REF_KEEP
+            log(f"Reference is {seconds:.0f} s, using the first {cut:.0f} s. (--ref-text should match that part.)")
+        else:
+            text, words = transcribe(y, a.lang)
+            cut = pick_cut(words)
+            text = "".join(w.word for w in words if w.end <= cut + 0.05).strip()
+            log(f"Reference is {seconds:.0f} s, cut to {cut:.1f} s at a sentence end.")
+        y = y[: int(cut * REF_SR)]
+    elif not text:
+        text, _ = transcribe(y, a.lang)
     sf.write(str(voice_dir / "ref.wav"), y, REF_SR, subtype="PCM_16")
     if text:
         (voice_dir / "ref.txt").write_text(text + "\n", encoding="utf-8")
@@ -220,47 +214,18 @@ class Qwen:
         return w, sr, len(w) / sr >= (tokens / 12.5) * 0.97   # True = hit the cap, i.e. it ran away
 
 
-class Chatterbox:
-    def __init__(self, device, voice_dir, lang, exaggeration, cfg):
-        from chatterbox.mtl_tts import SUPPORTED_LANGUAGES, ChatterboxMultilingualTTS
-        if lang in ("", "auto"):
-            log("No --lang given, assuming English (Chatterbox needs the language).")
-            lang = "en"
-        if lang not in SUPPORTED_LANGUAGES:
-            die(f"Chatterbox does not support '{lang}'. Supported: {', '.join(sorted(SUPPORTED_LANGUAGES))}")
-        log(f"Loading Chatterbox Multilingual on {device} (the first run downloads it)...")
-        t = time.time()
-        self.model = ChatterboxMultilingualTTS.from_pretrained(device=device)
-        log(f"Model loaded in {time.time() - t:.0f} s")
-        self.lang, self.ref, self.exaggeration, self.cfg = lang, str(voice_dir / "ref.wav"), exaggeration, cfg
-
-    def speak(self, text, seed):
-        import torch
-        torch.manual_seed(seed)
-        wav = self.model.generate(text, language_id=self.lang, audio_prompt_path=self.ref,
-                                  exaggeration=self.exaggeration, cfg_weight=self.cfg)
-        w = wav.squeeze().cpu().numpy().astype("float32")
-        sr = self.model.sr
-        return w, sr, len(w) / sr > len(text) * 0.25 + 6   # far longer than anyone talks = ran away
-
-
 def speak(a):
     import numpy as np
     import soundfile as sf
     voice_dir = pathlib.Path(a.voice_dir) if a.voice_dir else None
-    if a.speaker and a.backend != "qwen":
-        die("built-in speakers exist only for the Qwen models")
     if not a.speaker and not (voice_dir and (voice_dir / "ref.wav").exists()):
         die(f"{voice_dir}/ref.wav is missing. Run prepare first (tts.py does this for you).")
     text = pathlib.Path(a.text_file).read_text(encoding="utf-8").strip()
     if not text:
         die("the text is empty")
     lang = a.lang.lower()
-    device = pick_device(a.device, a.backend)
-    if a.backend == "qwen":
-        engine = Qwen(a.model, device, lang, voice_dir, a.speaker, a.style)
-    else:
-        engine = Chatterbox(device, voice_dir, lang, a.exaggeration, a.cfg)
+    device = pick_device(a.device)
+    engine = Qwen(a.model, device, lang, voice_dir, a.speaker, a.style)
     chunks = split_text(text, CHUNK_CHARS // 2 if lang in CJK else CHUNK_CHARS)
     seed = a.seed if a.seed is not None else random.randrange(1, 2**31)
     log(f"Speaking {len(text)} characters in {len(chunks)} piece(s), seed {seed}")
@@ -292,13 +257,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("prepare")
-    p.add_argument("--backend", required=True, choices=["qwen", "chatterbox"])
     p.add_argument("--ref", required=True)
     p.add_argument("--voice-dir", required=True)
     p.add_argument("--ref-text", default="")
     p.add_argument("--lang", default="auto")
     s = sub.add_parser("speak")
-    s.add_argument("--backend", required=True, choices=["qwen", "chatterbox"])
     s.add_argument("--model", default="")
     s.add_argument("--voice-dir", default="")
     s.add_argument("--speaker", default="")
@@ -308,8 +271,6 @@ def main():
     s.add_argument("--lang", default="auto")
     s.add_argument("--seed", type=int)
     s.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"])
-    s.add_argument("--exaggeration", type=float, default=0.5)
-    s.add_argument("--cfg", type=float, default=0.5)
     a = ap.parse_args()
     prepare(a) if a.cmd == "prepare" else speak(a)
 

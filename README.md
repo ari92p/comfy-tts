@@ -42,12 +42,11 @@ Results land in `out/`. Long texts are spoken sentence by sentence and joined. O
 | `--ref FILE` | clone from this recording (wav, mp3, m4a, ...) |
 | `--voice NAME` / `--save-voice NAME` | use / keep a prepared cloned voice |
 | `--text "..."` / `--text-file FILE` | what to say |
-| `--lang de` | language of the text (`auto` lets Qwen decide; Chatterbox needs it, default English) |
-| `--model` | `auto` (default), `qwen3-tts-1.7b`, `qwen3-tts-0.6b`, `chatterbox` (cloning only) |
+| `--lang de` | language of the text (default `auto`: the model decides) |
+| `--model` | `auto` (default), `qwen3-tts-1.7b` or `qwen3-tts-0.6b` |
 | `--seed N` | same seed and text give the same result; change it for another take |
 | `-o FILE` | output (`.wav`; `.mp3` and others work if ffmpeg is installed) |
-| `--ref-text "..."` | exact words of your recording (Qwen); otherwise Whisper listens for you |
-| `--exaggeration`, `--cfg` | Chatterbox only: emotion and pacing |
+| `--ref-text "..."` | exact words of your recording; otherwise Whisper listens for you |
 | `-y` | set up the Python environment without asking |
 | `--list-models`, `--list-speakers`, `--list-voices`, `--setup [MODEL]` | look around, or only install |
 
@@ -57,13 +56,26 @@ Results land in `out/`. Long texts are spoken sentence by sentence and joined. O
 | --- | --- | --- | --- |
 | `qwen3-tts-1.7b` | 10: en de fr es it pt ru zh ja ko | built-in speakers **and** cloning | the best quality; an NVIDIA GPU with 8+ GB is the tested setup |
 | `qwen3-tts-0.6b` | same 10 | speakers and cloning | smaller and faster, a bit less similar |
-| `chatterbox` | 23 (adds Arabic, Dutch, Polish, Turkish, Hindi, ...) | cloning only | no transcript needed; emotion control; adds an inaudible watermark to every file |
 
 Built-in speakers: `aiden`, `ryan` (English), `vivian`, `serena`, `uncle_fu`, `dylan`, `eric` (Chinese), `ono_anna` (Japanese), `sohee` (Korean).
 **Each speaker is native in one language and speaks the others with an accent.** For English, Chinese, Japanese and Korean the
 speakers are the easy choice. For German, French and the rest, a clone of a recording by a native speaker sounds far more natural.
 
-Licenses: Qwen3-TTS is Apache-2.0, Chatterbox is MIT. This repository is MIT.
+Licenses: Qwen3-TTS is Apache-2.0. This repository is MIT.
+
+## What is in here
+
+```
+tts.py               the program: guided mode and one-command mode
+start_server.cmd     keeps the voice service running (Windows)
+start_server.sh      the same for Mac and Linux
+src/engine.py        runs inside the private environment: prepares references, speaks
+src/server.py        the HTTP voice service
+requirements/        the Python packages of the private environment
+examples/            two small texts to try
+```
+
+`voices/` (saved voices), `out/` (results) and `.venvs/` (the environment) are created on first use and are not part of the repository.
 
 ## What you need
 
@@ -73,8 +85,7 @@ Licenses: Qwen3-TTS is Apache-2.0, Chatterbox is MIT. This repository is MIT.
 - A few GB of disk space and a few minutes on first use. Models and libraries are downloaded once.
 - Optional: `ffmpeg` (reading unusual audio formats, writing mp3).
 
-Each model family gets its own environment in `.venvs/` because their libraries pin conflicting versions.
-Nothing is installed globally. Delete `.venvs/` to reset.
+Everything runs in a private environment in `.venvs/`. Nothing is installed globally. Delete `.venvs/` to reset.
 
 ## A good reference recording (for cloning)
 
@@ -94,9 +105,11 @@ python3 tts.py --serve --host 0.0.0.0        # reachable from other computers (t
 
 This is the HTTP service the Studio uses for its Voice page: speakers, saved voices with several samples, Whisper transcripts,
 `POST /generate`. It keeps one model loaded at a time, frees the GPU after 5 minutes without requests, and restarts itself
-if a job hangs. The endpoints are listed at the top of [server.py](server.py). It uses Qwen3-TTS 1.7B (Base for cloning, CustomVoice for speakers).
+if a job hangs. The endpoints are listed at the top of [src/server.py](src/server.py). It uses Qwen3-TTS 1.7B by default (Base for cloning, CustomVoice for speakers).
 
-Options: `--port`, `--voices-dir FOLDER` (where voices are kept, default `voices/`), `--offline` (never contact Hugging Face).
+Options: `--port`, `--voices-dir FOLDER` (where voices are kept, default `voices/`), `--size 0.6B` (smaller models for smaller GPUs and Macs),
+`--whisper small` (a much smaller transcript model than the default `large-v3-turbo`), `--offline` (never contact Hugging Face).
+To keep it running, use `start_server.cmd` (Windows) or `start_server.sh` (Mac/Linux); both restart the service if it ends.
 Voices cloned on the command line and voices saved through the service share the same folder format, so both see each other's voices.
 
 ### Replacing an existing voice service on the PC
@@ -116,22 +129,25 @@ Tested on Windows with an NVIDIA RTX 5080 (16 GB), each time generating audio an
 - `--serve`, set up from scratch, on a second port next to the old service and with a copy of its 16 voices: `/health`, `/speakers`, `/voices`,
   `/generate` with a speaker (`ryan`, with `instruct`) and with an existing cloned voice, `/transcribe`;
 - the command line using a voice that was saved by the service (same folder format);
-- cloning with `chatterbox`, including setting up its environment from scratch.
 
-Tested on a Mac (Apple M5, 24 GB, Apple GPU): cloning with `qwen3-tts-0.6b`, set up from scratch with the system Python 3.9, automatic transcript,
-German text. 7 seconds of audio took 11 seconds, and the text came back word for word when transcribed again.
+Tested on a Mac (Apple M5, 24 GB, Apple GPU) with the 0.6B models, set up from scratch with the system Python 3.9:
 
-**Not tested yet:** built-in speakers and `--serve` on the Mac, `qwen3-tts-1.7b` and `chatterbox` on the Mac, the other service endpoints
-(uploading voices, samples, renaming, deleting), switching the real service over (the old one was left untouched), and Linux or CPU only.
+- cloning with automatic transcript and German text: 7 seconds of audio took 11 seconds;
+- a built-in speaker (`ryan`, with `--style`): 5 seconds of audio took 6 seconds;
+- `--serve --size 0.6B`: `/speakers`, uploading a voice (Whisper wrote the transcript), `/generate` with a speaker and with the uploaded voice,
+  `/transcribe`, renaming and deleting a voice.
+
+The text came back word for word when transcribed again, every time.
+
+**Not tested yet:** `qwen3-tts-1.7b` on the Mac, the service endpoints for extra samples, switching the real service over
+(the old one was left untouched), and Linux or CPU only.
 The size hints in the guided mode are rules of thumb, not measurements. If something fails, please open an issue with the output.
-
-In a German round-trip test (generate, then transcribe again) Qwen reproduced the text word for word, while Chatterbox once said "Kaffee-Karte" for "Grafikkarte".
 
 ## Please use it responsibly
 
 Only clone voices you have the right to clone: your own, or someone who clearly agreed. Don't use cloned voices to deceive,
-impersonate or harass anyone, and check the laws and platform rules where you publish. Chatterbox marks its output with a
-watermark; Qwen does not, so say when audio is synthetic.
+impersonate or harass anyone, and check the laws and platform rules where you publish. The generated audio carries no watermark,
+so say when it is synthetic.
 
 ## Troubleshooting
 
@@ -145,8 +161,8 @@ watermark; Qwen does not, so say when audio is synthetic.
 
 ## How it works
 
-`tts.py` detects your hardware, builds the right environment, and calls `engine.py` inside it.
+`tts.py` detects your hardware, builds the right environment, and calls `src/engine.py` inside it.
 For cloning, `engine.py` turns your recording into a clean 24 kHz reference (cut to at most 15 s, transcribed with Whisper for Qwen).
 It then speaks the text in sentence-sized pieces and re-rolls a piece with another seed if it runs away or comes out silent.
 Settings come from a lot of trial and error with Qwen3-TTS (repetition penalty 1.05, a hard cap on generated tokens, no post-processing).
-`server.py` is the long-running version of the same idea behind an HTTP API.
+`src/server.py` is the long-running version of the same idea behind an HTTP API.

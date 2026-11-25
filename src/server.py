@@ -35,7 +35,7 @@ import threading
 import time
 from typing import Optional
 
-# Environment (all optional): VOICE_DIR = where saved voices live (default: voices/ next to this file; point it at an existing
+# Environment (all optional): VOICE_DIR = where saved voices live (default: voices/ in the repository root; point it at an existing
 # folder to keep your voices), HF_HOME = Hugging Face cache, VOICE_OFFLINE=1 = never talk to the Hub (models must be cached).
 if os.environ.get("VOICE_OFFLINE") == "1":
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
@@ -50,9 +50,11 @@ from fastapi.responses import FileResponse, Response  # noqa: E402
 from huggingface_hub import snapshot_download  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
-VOICES = pathlib.Path(os.environ.get("VOICE_DIR") or pathlib.Path(__file__).resolve().parent / "voices")
+VOICES = pathlib.Path(os.environ.get("VOICE_DIR") or pathlib.Path(__file__).resolve().parent.parent / "voices")
 IDLE_SECONDS = int(os.environ.get("VOICE_IDLE_SECONDS", "300"))
-MODELS = {"clone": "Qwen/Qwen3-TTS-12Hz-1.7B-Base", "custom": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"}
+SIZE = os.environ.get("VOICE_MODEL_SIZE", "1.7B")   # "1.7B" (default) or "0.6B" for smaller GPUs and Macs
+MODELS = {"clone": f"Qwen/Qwen3-TTS-12Hz-{SIZE}-Base", "custom": f"Qwen/Qwen3-TTS-12Hz-{SIZE}-CustomVoice"}
+WHISPER = os.environ.get("VOICE_WHISPER", "large-v3-turbo")   # e.g. "small" for a much smaller download
 SPEAKERS = [
     {"name": "aiden", "note": "Englisch, Mann (US)"}, {"name": "ryan", "note": "Englisch, Mann"},
     {"name": "dylan", "note": "Chinesisch (Peking), Mann"}, {"name": "eric", "note": "Chinesisch (Sichuan), Mann"},
@@ -109,7 +111,7 @@ def model(kind):
         if kind == "whisper":
             from faster_whisper import WhisperModel
             # CPU: CTranslate2 wants CUDA-12 cuBLAS, the venv only has CUDA 13 (torch). A 30 s clip takes seconds anyway.
-            _models[kind] = WhisperModel("large-v3-turbo", device="cpu", compute_type="int8")
+            _models[kind] = WhisperModel(WHISPER, device="cpu", compute_type="int8")
         else:
             from qwen_tts import Qwen3TTSModel
             # local snapshot path: qwen-tts otherwise queries the Hub API on every load
@@ -364,7 +366,7 @@ def voice_prompt(d):
 def health():
     return {"ok": True, "busy": JOB.locked(), "loaded": sorted(_models), "idle_seconds": IDLE_SECONDS,
             "voices": sum(1 for d in VOICES.glob("*") if voice_info(d)) if VOICES.is_dir() else 0,
-            "gpu": torch.cuda.is_available()}
+            "gpu": torch.cuda.is_available() or torch.backends.mps.is_available()}
 
 
 @app.get("/speakers")

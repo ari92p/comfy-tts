@@ -21,6 +21,7 @@ import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent
+SRC = ROOT / "src"
 VENVS = ROOT / ".venvs"
 VOICES = ROOT / "voices"
 OUT = ROOT / "out"
@@ -28,8 +29,6 @@ IS_WIN = os.name == "nt"
 
 # Everything the launcher knows about the models. `langs` are ISO codes. `python` is the interpreter uv fetches for the venv.
 QWEN_LANGS = ["en", "de", "fr", "es", "it", "pt", "ru", "zh", "ja", "ko"]
-CHATTERBOX_LANGS = ["ar", "da", "de", "el", "en", "es", "fi", "fr", "he", "hi", "it", "ja", "ko", "ms", "nl", "no", "pl",
-                    "pt", "ru", "sv", "sw", "tr", "zh"]
 MODELS = {
     "qwen3-tts-1.7b": {
         "backend": "qwen", "repo": "Qwen/Qwen3-TTS-12Hz-1.7B-Base", "speaker_repo": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice", "langs": QWEN_LANGS, "python": "3.12",
@@ -41,11 +40,6 @@ MODELS = {
         "title": "Qwen3-TTS 0.6B",
         "note": "same family, smaller and faster; speakers and cloning; for smaller GPUs and trying things out",
     },
-    "chatterbox": {
-        "backend": "chatterbox", "repo": "ResembleAI/chatterbox", "langs": CHATTERBOX_LANGS, "python": "3.11",
-        "title": "Chatterbox Multilingual",
-        "note": "cloning only (no built-in speakers); 23 languages, no transcript needed, adds an inaudible watermark",
-    },
 }
 # Built-in speakers of the Qwen3-TTS CustomVoice models. Each is native in one language and speaks the others with an accent.
 SPEAKERS = [
@@ -55,9 +49,7 @@ SPEAKERS = [
 ]
 DEFAULT_SPEAKER = {"en": "aiden", "zh": "vivian", "ja": "ono_anna", "ko": "sohee"}
 LANG_NAMES = {"en": "English", "de": "German", "fr": "French", "es": "Spanish", "it": "Italian", "pt": "Portuguese",
-              "ru": "Russian", "zh": "Chinese", "ja": "Japanese", "ko": "Korean", "ar": "Arabic", "da": "Danish",
-              "el": "Greek", "fi": "Finnish", "he": "Hebrew", "hi": "Hindi", "ms": "Malay", "nl": "Dutch",
-              "no": "Norwegian", "pl": "Polish", "sv": "Swedish", "sw": "Swahili", "tr": "Turkish"}
+              "ru": "Russian", "zh": "Chinese", "ja": "Japanese", "ko": "Korean"}
 
 
 def say(*a):
@@ -101,8 +93,6 @@ def describe(hw):
 
 def recommend(lang, hw):
     """The model to suggest for this language and hardware. `lang` may be 'auto'."""
-    if lang not in ("auto", "") and lang not in QWEN_LANGS:
-        return "chatterbox"
     big = (hw["kind"] == "cuda" and hw["mem_gb"] >= 8) or (hw["kind"] == "mps" and hw["mem_gb"] >= 16)
     return "qwen3-tts-1.7b" if big else "qwen3-tts-0.6b"
 
@@ -147,24 +137,11 @@ def ensure_env(model, hw, assume_yes):
     py = str(env_python(backend))
     run([uv, "venv", "--python", MODELS[model]["python"], str(venv)], check=True)
     reqs = ["-r", str(ROOT / "requirements" / f"{backend}.txt")]
-    extra = []
     nvidia = hw["kind"] == "cuda"
-    blackwell = nvidia and hw["cc"] >= 12.0      # RTX 50 series: needs CUDA 12.8 builds of PyTorch
     if backend == "qwen" and nvidia and IS_WIN:
         # on Windows the default PyPI torch is CPU-only
         run([uv, "pip", "install", "--python", py, "torch", "torchaudio", "--index-url", "https://download.pytorch.org/whl/cu128"], check=True)
-    elif backend == "chatterbox" and nvidia:
-        # chatterbox-tts pins torch==2.6.0, which has no Blackwell kernels; for RTX 50 we override the pin
-        if blackwell:
-            overrides = VENVS / "overrides.txt"
-            overrides.write_text("torch==2.7.1\ntorchaudio==2.7.1\n")
-            run([uv, "pip", "install", "--python", py, "torch==2.7.1", "torchaudio==2.7.1", "--index-url",
-                 "https://download.pytorch.org/whl/cu128"], check=True)
-            extra = ["--override", str(overrides)]
-        elif IS_WIN:
-            run([uv, "pip", "install", "--python", py, "torch==2.6.0", "torchaudio==2.6.0", "--index-url",
-                 "https://download.pytorch.org/whl/cu124"], check=True)
-    run([uv, "pip", "install", "--python", py] + extra + reqs, check=True)
+    run([uv, "pip", "install", "--python", py] + reqs, check=True)
     (venv / ".tts-ready").write_text("ok\n")
     say("Environment ready.\n")
 
@@ -173,7 +150,7 @@ def engine(model, args):
     """Run engine.py in the model's virtualenv and stream its output."""
     env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8", PYTORCH_ENABLE_MPS_FALLBACK="1",
                TOKENIZERS_PARALLELISM="false")
-    cmd = [str(env_python(MODELS[model]["backend"])), str(ROOT / "engine.py")] + args
+    cmd = [str(env_python(MODELS[model]["backend"])), str(SRC / "engine.py")] + args
     r = run(cmd, env=env)
     if r.returncode:
         sys.exit(r.returncode)
@@ -229,19 +206,18 @@ def rel(p):
 # ---------- the actual work ----------
 
 def prepare_voice(model, voice_dir, ref, ref_text, lang):
-    args = ["prepare", "--backend", MODELS[model]["backend"], "--ref", ref, "--voice-dir", str(voice_dir), "--lang", lang]
+    args = ["prepare", "--ref", ref, "--voice-dir", str(voice_dir), "--lang", lang]
     if ref_text:
         args += ["--ref-text", ref_text]
     engine(model, args)
 
 
-def speak(model, voice_dir, text, out, lang, seed, device, exaggeration, cfg, speaker="", style=""):
+def speak(model, voice_dir, text, out, lang, seed, device, speaker="", style=""):
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as f:
         f.write(text)
         tmp = f.name
     try:
-        args = ["speak", "--backend", MODELS[model]["backend"], "--text-file", tmp, "--out", str(out), "--lang", lang,
-                "--device", device, "--exaggeration", str(exaggeration), "--cfg", str(cfg)]
+        args = ["speak", "--text-file", tmp, "--out", str(out), "--lang", lang, "--device", device]
         if speaker:
             args += ["--model", MODELS[model]["speaker_repo"], "--speaker", speaker, "--style", style]
         else:
@@ -273,8 +249,6 @@ def finish_output(wav, out):
 # ---------- headless ----------
 
 def check_speaker(model, lang, speaker):
-    if MODELS[model]["backend"] != "qwen":
-        die(f"{MODELS[model]['title']} has no built-in speakers. Use --model auto, qwen3-tts-1.7b or qwen3-tts-0.6b.")
     if speaker.lower() not in [n for n, _ in SPEAKERS]:
         die(f"unknown speaker '{speaker}'. Available: {', '.join(n for n, _ in SPEAKERS)}")
 
@@ -282,8 +256,6 @@ def check_speaker(model, lang, speaker):
 def headless(a, hw):
     lang = a.lang.lower()
     model = a.model if a.model != "auto" else recommend(lang, hw)
-    if a.speaker and a.model == "auto" and lang not in ("auto", "") and lang not in QWEN_LANGS:
-        die(f"built-in speakers support {', '.join(QWEN_LANGS)}. For '{lang}' clone a voice with --ref instead.")
     if not supports(model, lang):
         die(f"{MODELS[model]['title']} does not support '{lang}'. Try --model auto, or see: python3 tts.py --list-models")
     text = a.text if a.text is not None else pathlib.Path(clean_path(a.text_file)).read_text(encoding="utf-8")
@@ -310,7 +282,7 @@ def headless(a, hw):
     ensure_env(model, hw, a.yes or not sys.stdin.isatty())
     if ref:
         prepare_voice(model, voice_dir, ref, a.ref_text, lang)
-    speak(model, voice_dir, text, wav, lang, a.seed, a.device, a.exaggeration, a.cfg, a.speaker, a.style)
+    speak(model, voice_dir, text, wav, lang, a.seed, a.device, a.speaker, a.style)
     finish_output(wav, out)
     say(f"\nSaved: {out}")
 
@@ -319,7 +291,7 @@ def headless(a, hw):
 
 def pick_model(lang, hw, speaker_mode):
     """Show the models that fit and let the user choose; Enter takes the recommendation."""
-    options = [m for m in MODELS if supports(m, lang) and (not speaker_mode or MODELS[m]["backend"] == "qwen")]
+    options = [m for m in MODELS if supports(m, lang)]
     rec = recommend(lang, hw)
     if rec not in options:
         rec = options[0]
@@ -344,9 +316,8 @@ def guided(hw):
     speaker_mode = ask("   Number", "1") != "2"
 
     lang = ask("\n2) Which language will the spoken text be in? (code, e.g. en, de, fr, es)", "en").lower()
-    allowed = QWEN_LANGS if speaker_mode else CHATTERBOX_LANGS
-    if lang not in allowed:
-        say(f"   '{lang}' is not supported here. Supported: {', '.join(allowed)}")
+    if lang not in QWEN_LANGS:
+        say(f"   '{lang}' is not supported here. Supported: {', '.join(QWEN_LANGS)}")
         lang = "en"
     if speaker_mode and lang not in DEFAULT_SPEAKER:
         say(f"   Note: every built-in speaker is native in English, Chinese, Japanese or Korean and speaks {LANG_NAMES.get(lang, lang)} with an accent.")
@@ -415,7 +386,7 @@ def guided(hw):
     say(f"\n   {shell_join(argv)}\n")
 
     wav, final = final_output(out, model)
-    speak(model, voice_dir, text, wav, lang, None, "auto", 0.5, 0.5, speaker, style)
+    speak(model, voice_dir, text, wav, lang, None, "auto", speaker, style)
     finish_output(wav, final)
     say(f"\nSaved: {final}")
     say("If it doesn't sound right: try another --seed" + ("." if speaker else ", a cleaner or slightly longer reference, or the other model."))
@@ -432,7 +403,11 @@ def serve(a, hw):
         env["VOICE_DIR"] = str(pathlib.Path(a.voices_dir).resolve())
     if a.offline:
         env["VOICE_OFFLINE"] = "1"
-    cmd = [str(env_python("qwen")), str(ROOT / "server.py"), "--host", a.host, "--port", str(a.port)]
+    if a.size:
+        env["VOICE_MODEL_SIZE"] = a.size
+    if a.whisper:
+        env["VOICE_WHISPER"] = a.whisper
+    cmd = [str(env_python("qwen")), str(SRC / "server.py"), "--host", a.host, "--port", str(a.port)]
     say(f"Voice service on http://{a.host}:{a.port}  (Ctrl+C stops it)")
     while True:
         try:
@@ -465,17 +440,17 @@ def main():
     ap.add_argument("-o", "--out", help="output file (default: out/<voice>-<time>.wav; .mp3 works if ffmpeg is installed)")
     ap.add_argument("--lang", default="auto", help="language of the text, e.g. en, de, fr (default: auto = let the model decide)")
     ap.add_argument("--model", default="auto", choices=["auto"] + list(MODELS), help="default auto = best for your language and computer")
-    ap.add_argument("--ref-text", help="exact words spoken in the reference (Qwen only; default: Whisper listens for you)")
+    ap.add_argument("--ref-text", help="exact words spoken in the reference (default: Whisper listens for you)")
     ap.add_argument("--seed", type=int, help="same seed + same text = same result; change it for a different take")
     ap.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"])
-    ap.add_argument("--exaggeration", type=float, default=0.5, help="Chatterbox only: emotion, 0.25 calm to 1.0 dramatic")
-    ap.add_argument("--cfg", type=float, default=0.5, help="Chatterbox only: lower = slower, more deliberate pacing")
     ap.add_argument("-y", "--yes", action="store_true", help="set up the Python environment without asking")
     ap.add_argument("--setup", nargs="?", const="auto", metavar="MODEL", help="only install the environment for MODEL, then exit")
     ap.add_argument("--serve", action="store_true", help="run the HTTP voice service (what the Studio talks to) instead of generating once")
     ap.add_argument("--host", default="127.0.0.1", help="with --serve: address to listen on (0.0.0.0 = reachable from other computers)")
     ap.add_argument("--port", type=int, default=8190, help="with --serve: port (default 8190)")
     ap.add_argument("--voices-dir", help="with --serve: folder with the saved voices (default: voices/); use an existing folder to keep your voices")
+    ap.add_argument("--size", choices=["1.7B", "0.6B"], help="with --serve: model size (default 1.7B; 0.6B for smaller GPUs and Macs)")
+    ap.add_argument("--whisper", help="with --serve: Whisper model for transcripts (default large-v3-turbo; \"small\" is a much smaller download)")
     ap.add_argument("--offline", action="store_true", help="with --serve: never contact Hugging Face (models must already be downloaded)")
     ap.add_argument("--list-models", action="store_true")
     ap.add_argument("--list-voices", action="store_true")
