@@ -11,14 +11,14 @@ Give it a 10-second recording of a voice and let it say anything, or turn an aud
 
 ```bash
 git clone https://github.com/ari92p/easy-tts && cd easy-tts
-python3 tts.py
+python3 easy-tts.py
 ```
 
 `tts` on its own guides you: it asks for the language, lets you pick a saved voice or give a new recording (5 to 15 seconds, one person),
 asks for the text and writes the result to `out/`. For a new recording, Whisper writes down what is said (`voices/<name>/ref.txt`, you can correct it there by hand).
 The first run also sets everything up and downloads the models (about 6 GB), once.
 
-On Windows use `python` instead of `python3`. Want a plain `tts` command? On Mac and Linux: `chmod +x tts.py && ln -s "$PWD/tts.py" ~/.local/bin/tts`.
+On Windows use `python` instead of `python3`. Want a plain `tts` command? On Mac and Linux: `chmod +x easy-tts.py && ln -s "$PWD/easy-tts.py" ~/.local/bin/tts`.
 
 You need Python 3.9+, [`uv`](https://docs.astral.sh/uv/) (`brew install uv`, or `curl -LsSf https://astral.sh/uv/install.sh | sh`,
 on Windows `irm https://astral.sh/uv/install.ps1 | iex`) and a GPU: an NVIDIA card or a Mac with Apple Silicon.
@@ -68,8 +68,8 @@ Whisper `large-v3-turbo` runs on your own computer; nothing is uploaded.
 ## Run it as service
 
 ```bash
-python3 tts.py --serve                      # http://127.0.0.1:8190
-python3 tts.py --serve --host 0.0.0.0       # reachable from other computers (no login, use a firewall)
+python3 easy-tts.py --serve                      # http://127.0.0.1:8190
+python3 easy-tts.py --serve --host 0.0.0.0       # reachable from other computers (no login, use a firewall)
 ```
 
 A small HTTP service for other programs: saved voices with several samples, Whisper transcripts, `POST /generate`.
@@ -80,7 +80,7 @@ Options: `--port`, `--voices-dir FOLDER`, `--offline` (never contact Hugging Fac
 ### Start files
 
 `start_server.cmd` (Windows) and `start_server.sh` (Mac/Linux) are shortcuts for
-`tts.py --serve --host 0.0.0.0 --port 8190`: they go to their own folder first, so you can start them from anywhere.
+`easy-tts.py --serve --host 0.0.0.0 --port 8190`: they go to their own folder first, so you can start them from anywhere.
 
 | System | How to start |
 | --- | --- |

@@ -1,6 +1,6 @@
 """Voice service: Qwen3-TTS (voice cloning) and Whisper (transcript of a sample) as a small HTTP API.
 
-Started by `python3 tts.py --serve` (inside the Qwen environment of this repo). Same HTTP API as the Studio's voice service.
+Started by `python3 easy-tts.py --serve` (inside the Qwen environment of this repo). Same HTTP API as the Studio's voice service.
 Restrict who may reach it with a firewall rule; there is no login. One job at a time; a model is loaded on first
 use and dropped from the GPU again after IDLE_SECONDS without a request, because the card is shared with ComfyUI.
 
@@ -17,7 +17,7 @@ use and dropped from the GPU again after IDLE_SECONDS without a request, because
 
 Settings found by trial and error with Qwen3-TTS: repetition_penalty 1.05, never do_sample=False (endless
 babble), voices are not post-processed. Against hangs every generation gets max_new_tokens (at most 1024) and max_time, and a
-watchdog ends the process if a job is still stuck after 4 minutes (`tts.py --serve` then starts it again).
+watchdog ends the process if a job is still stuck after 4 minutes (`easy-tts.py --serve` then starts it again).
 Samples over 16 s are cut to a sentence end at or before 15 s (Whisper word times; the whole recording stays as ref_full.wav).
 The clone prompt of each voice is computed once and kept as prompt.pt.
 """
@@ -154,7 +154,7 @@ def janitor():
 
 
 def watchdog():
-    """A job that outlives HARD_SECONDS is stuck (max_time did not stop it): end the process. `tts.py --serve` starts it again."""
+    """A job that outlives HARD_SECONDS is stuck (max_time did not stop it): end the process. `easy-tts.py --serve` starts it again."""
     while True:
         time.sleep(5)
         if _started[0] and time.time() - _started[0] > HARD_SECONDS:
