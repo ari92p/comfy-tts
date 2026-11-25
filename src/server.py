@@ -240,10 +240,27 @@ def to_wav(audio, sr):
 
 # ---------- voices ----------
 
+def all_voice_dirs():
+    """Every saved voice: voices/<name>, or sorted by language as voices/<language>/<name> (the CLI keeps them that way)."""
+    out = []
+    if VOICES.is_dir():
+        for d in sorted(VOICES.iterdir()):
+            if not d.is_dir() or d.name.startswith("_"):
+                continue
+            if (d / "ref.wav").is_file():
+                out.append(d)
+            else:
+                out.extend(e for e in sorted(d.iterdir()) if e.is_dir() and not e.name.startswith("_") and (e / "ref.wav").is_file())
+    return out
+
+
 def voice_dir(name):
     if not NAME_RE.match(name):
         raise HTTPException(400, "Name: Kleinbuchstaben, Ziffern, - und _ (höchstens 40 Zeichen)")
-    return VOICES / name
+    flat = VOICES / name
+    if flat.is_dir():
+        return flat
+    return next((d for d in all_voice_dirs() if d.name == name), flat)   # a voice in a language folder; otherwise the place for a new one
 
 
 def voice_info(d):
@@ -331,7 +348,7 @@ def rebuild_ref(d, items):
 
 def tidy_voices():
     """At start: repair texts with broken umlauts and make sure every voice has exactly one template sample."""
-    for d in VOICES.glob("*"):
+    for d in all_voice_dirs():
         if not (d / "ref.wav").is_file() or not (d / "ref.txt").is_file():
             continue
         try:
@@ -377,7 +394,7 @@ def voice_prompt(d):
 @app.get("/health")
 def health():
     return {"ok": True, "busy": JOB.locked(), "loaded": sorted(_models), "idle_seconds": IDLE_SECONDS,
-            "voices": sum(1 for d in VOICES.glob("*") if voice_info(d)) if VOICES.is_dir() else 0,
+            "voices": sum(1 for d in all_voice_dirs() if voice_info(d)),
             "gpu": torch.cuda.is_available() or torch.backends.mps.is_available()}
 
 
@@ -389,7 +406,7 @@ def speakers():
 @app.get("/voices")
 def voices():
     VOICES.mkdir(parents=True, exist_ok=True)
-    out = [v for v in (voice_info(d) for d in sorted(VOICES.iterdir()) if d.is_dir() and not d.name.startswith("_")) if v]
+    out = [v for v in (voice_info(d) for d in all_voice_dirs()) if v]
     return {"voices": out}
 
 

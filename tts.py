@@ -188,10 +188,42 @@ def voice_name(s):
     return re.sub(r"[^a-z0-9_-]+", "-", s.lower()).strip("-")[:40]
 
 
+def lang_folder(lang):
+    return lang if lang in QWEN_LANGS else "other"
+
+
+def voice_dirs():
+    """All saved voices as {name: folder}: 'de/klara' for voices/de/klara (sorted by language), 'klara' for an older voices/klara."""
+    found = {}
+    if VOICES.is_dir():
+        for d in sorted(VOICES.iterdir()):
+            if not d.is_dir() or d.name.startswith("_"):
+                continue
+            if (d / "ref.wav").exists():
+                found[d.name] = d
+            else:
+                for e in sorted(d.iterdir()):
+                    if e.is_dir() and not e.name.startswith("_") and (e / "ref.wav").exists():
+                        found[f"{d.name}/{e.name}"] = e
+    return found
+
+
 def saved_voices():
-    if not VOICES.exists():
-        return []
-    return sorted(d.name for d in VOICES.iterdir() if (d / "ref.wav").exists() and not d.name.startswith("_"))
+    return list(voice_dirs())
+
+
+def find_voice(name, lang=""):
+    """A saved voice by 'de/klara' or just 'klara' -> (name, folder), or None. If 'klara' exists in several languages the language decides."""
+    found = voice_dirs()
+    name = "/".join(voice_name(x) for x in name.split("/"))
+    if name in found:
+        return name, found[name]
+    hits = [k for k in found if k.split("/")[-1] == name]
+    if len(hits) > 1 and lang:
+        hits = [k for k in hits if k.startswith(lang + "/")] or hits
+    if len(hits) > 1:
+        die(f"'{name}' exists in several languages: {', '.join(hits)}. Say which one, for example --voice {hits[0]}")
+    return (hits[0], found[hits[0]]) if hits else None
 
 
 def shell_join(argv):
@@ -260,7 +292,7 @@ def prepare_voice(model, voice_dir, ref, ref_text, lang):
     engine(model, args, quiet)
 
 
-def speak(model, voice_dir, text, out, lang, seed, device):
+def speak(model, voice_dir, text, out, lang, seed, device, fast=False, speed=1.0):
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as f:
         f.write(text)
         tmp = f.name
@@ -269,7 +301,11 @@ def speak(model, voice_dir, text, out, lang, seed, device):
         args += ["--model", MODELS[model]["repo"], "--voice-dir", str(voice_dir)]
         if seed is not None:
             args += ["--seed", str(seed)]
-        quiet = cached(MODELS[model]["repo"], "model.safetensors")
+        if fast:
+            args += ["--no-check"]
+        if speed != 1.0:
+            args += ["--speed", str(speed)]
+        quiet = cached(MODELS[model]["repo"], "model.safetensors") and (fast or cached("Systran/faster-whisper-small", "model.bin"))
         if not quiet:
             say("Downloading the voice model (about 4 GB, first time only)...")
         engine(model, args, quiet)
@@ -309,22 +345,22 @@ def make_clip(a, hw, text, lang, voice="", clone=""):
         die("the text is empty")
     ref = ""
     if voice:
-        voice_dir = VOICES / voice_name(voice)
-        if not (voice_dir / "ref.wav").exists():
+        hit = find_voice(voice, lang)
+        if not hit:
             die(f"no saved voice called '{voice}'. Saved voices: {', '.join(saved_voices()) or 'none yet'}")
-        label = voice_name(voice)
+        label, voice_dir = hit[0].split("/")[-1], hit[1]
     else:
         ref = clean_path(clone)
         if not os.path.isfile(ref):
             die(f"recording not found: {ref}")
         label = voice_name(a.save_voice) if a.save_voice else "_last"
-        voice_dir = VOICES / label
+        voice_dir = VOICES / lang_folder(lang) / label if a.save_voice else VOICES / label
     out = pathlib.Path(a.out) if a.out else OUT / f"{label.strip('_') or 'voice'}-{datetime.datetime.now():%Y%m%d-%H%M%S}.wav"
     wav, out = final_output(out, model)
     ensure_env(model, hw, True)
     if ref:
         prepare_voice(model, voice_dir, ref, a.clone_text, lang)
-    speak(model, voice_dir, text, wav, lang, a.seed, a.device)
+    speak(model, voice_dir, text, wav, lang, a.seed, a.device, a.fast, a.speed)
     finish_output(wav, out)
     say(f"Saved: {rel(out)}")
 
@@ -341,8 +377,8 @@ def configure(hw, first):
     voice, ref = "", ""
     voices = saved_voices()
     if voices:
-        v = voice_name(ask(f"Use a saved voice? ({', '.join(voices)}) Name, or Enter for a new recording", ""))
-        voice = v if v in voices else ""
+        hit = find_voice(ask(f"Use a saved voice? ({', '.join(voices)}) Name, or Enter for a new recording", "") or "-", lang)
+        voice = hit[0] if hit else ""
     if not voice:
         say("Recording of the voice: 5 to 15 seconds of one person speaking clearly. Drag the file here.")
         while True:
@@ -351,7 +387,7 @@ def configure(hw, first):
                 break
             say("File not found, try again.")
         default = voice_name(pathlib.Path(ref).stem) or "voice"
-        voice = voice_name(ask("Name for this voice", default)) or default
+        voice = f"{lang_folder(lang)}/{voice_name(ask('Name for this voice', default)) or default}"
     model = recommend(lang, hw)
     ensure_env(model, hw, True)
     if ref:
@@ -419,6 +455,8 @@ def main():
     ap.add_argument("--clone-text", help="with --clone: the exact words spoken in the recording (default: Whisper listens for you)")
     ap.add_argument("--seed", type=int, help="same seed + same text = same result; change it for a different take")
     ap.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"])
+    ap.add_argument("--speed", type=float, default=1.0, metavar="X", help="speaking speed: 1.0 = as the voice speaks, 1.2 = faster, 0.8 = slower (0.5 to 2)")
+    ap.add_argument("--fast", action="store_true", help="skip the check that listens to the result and redoes pieces that do not match the text")
     ap.add_argument("-v", "--verbose", action="store_true", help="show everything the setup and the voice engine print")
     ap.add_argument("-y", "--yes", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--setup", nargs="?", const="auto", metavar="MODEL", help="only install the environment, then exit")
@@ -430,7 +468,14 @@ def main():
     ap.add_argument("--offline", action="store_true", help="with --serve: never contact Hugging Face (models must already be downloaded)")
     ap.add_argument("--list-models", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--list-voices", action="store_true", help="show the voices you saved")
-    a = ap.parse_args()
+    # Forgive a single dash on a long option: "-voice klara" means "--voice klara" (otherwise argparse reads it as -v -o ice ...)
+    longs = {o for o in ap._option_string_actions if o.startswith("--")}
+
+    def fix(arg):
+        name, eq, rest = arg.partition("=")
+        return "-" + name + eq + rest if len(name) > 2 and not name.startswith("--") and "-" + name in longs else arg
+
+    a = ap.parse_args([fix(x) for x in sys.argv[1:]])
     VERBOSE = a.verbose
 
     hw = detect_hardware()
@@ -455,6 +500,8 @@ def main():
     cfg = load_config()
     if a.clone and a.voice:
         die("give either --clone FILE (a new recording) or --voice NAME (a voice saved earlier), not both")
+    if not 0.5 <= a.speed <= 2.0:
+        die("--speed must be between 0.5 and 2 (1.0 = unchanged)")
     if sum(x is not None and x != [] for x in (a.text, a.words or None, a.text_file)) > 1:
         die("give the text once: as an argument, with --text, or with --text-file")
     if a.configure:

@@ -35,7 +35,8 @@ tts --voice me "Hello again" -o hello.wav       # use a saved voice, choose the 
 tts --text-file chapter1.txt -o chapter1.wav    # a long text from a file
 ```
 
-Results go to `out/` (or where `-o` says). Long texts are spoken sentence by sentence and joined.
+Results go to `out/` (or where `-o` says). Long texts are spoken sentence by sentence, several sentences at a time, and joined. Afterwards the program
+listens to each sentence again with Whisper and makes it again if it does not match the text (the model sometimes repeats a sentence or invents a word).
 
 | Option | What it does |
 | --- | --- |
@@ -45,12 +46,15 @@ Results go to `out/` (or where `-o` says). Long texts are spoken sentence by sen
 | `--text "..."`, `--text-file FILE`, or the text as an argument | what to say |
 | `--lang de` | language of the text: en de fr es it pt ru zh ja ko (default: the one you configured) |
 | `--clone-text "..."` | with `--clone`: the exact words of your recording (otherwise Whisper listens for you) |
+| `--speed 1.2` | speaking speed: 1.0 as the voice speaks, above 1 faster, below 1 slower (0.5 to 2). The model has no speed setting, so this stretches the audio without changing the pitch: fine up to about 1.3, beyond that it starts to sound processed |
 | `--seed N` | same seed and text give the same result; change it for another take |
 | `-o FILE` | output file (`.mp3` and others work if ffmpeg is installed) |
-| `--list-voices` | show the voices you saved |
+| `--list-voices` | show the voices you saved, for example `de/klara` |
+| `--fast` | skip that listen-back check (about 10 seconds quicker, but a repeated or invented word can stay in) |
 | `-v` | show everything the setup and the voice engine print |
 
-Your choices are kept in `config.json` next to `tts.py` (not part of the repository).
+Your choices are kept in `config.json` next to `tts.py` (not part of the repository). Saved voices are sorted by language: `voices/de/klara`, `voices/en/sweet` and so on.
+Use `--voice klara` or `--voice de/klara` (the second one when the same name exists in two languages).
 
 ## Run it as service
 

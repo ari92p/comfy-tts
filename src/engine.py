@@ -27,6 +27,8 @@ REF_KEEP = 15.0        # a longer reference is cut to a sentence end at or befor
 REF_TRIM_ABOVE = 16.0
 GAP = 0.25             # seconds of silence between generated chunks
 CHUNK_CHARS = 250      # text is spoken in sentence-sized pieces; long single passes drift
+BATCH = 4              # pieces generated in one go (about twice as fast as one after the other)
+MIN_MATCH = 0.75       # how well the words of a piece must match the text when Whisper listens to it again (1.0 = identical)
 CJK = ("zh", "ja", "ko")
 QWEN_LANGS = {"en": "English", "de": "German", "fr": "French", "es": "Spanish", "it": "Italian", "pt": "Portuguese",
               "ru": "Russian", "zh": "Chinese", "ja": "Japanese", "ko": "Korean"}
@@ -76,14 +78,23 @@ def load_audio(path):
         return y
 
 
-def transcribe(y, lang):
+_whisper = []
+
+
+def whisper_model():
+    if not _whisper:
+        from faster_whisper import WhisperModel
+        _whisper.append(WhisperModel(os.environ.get("VOICE_WHISPER", "small"), device="cpu", compute_type="int8"))
+    return _whisper[0]
+
+
+def transcribe(y, lang, quiet=False):
     """-> (text, words) with word times in seconds (faster-whisper, CPU, so it never competes with the TTS model for VRAM)."""
     import librosa
-    from faster_whisper import WhisperModel
-    log("Listening to the reference (Whisper)...")
-    model = WhisperModel(os.environ.get("VOICE_WHISPER", "small"), device="cpu", compute_type="int8")
+    if not quiet:
+        log("Listening to the reference (Whisper)...")
     y16 = librosa.resample(y, orig_sr=REF_SR, target_sr=16000)
-    segments, _ = model.transcribe(y16, language=None if lang in ("", "auto") else lang, beam_size=5, word_timestamps=True)
+    segments, _ = whisper_model().transcribe(y16, language=None if lang in ("", "auto") else lang, beam_size=5, word_timestamps=True)
     words = [w for s in segments for w in (s.words or [])]
     return "".join(w.word for w in words).strip(), words
 
@@ -191,15 +202,77 @@ class Qwen:
                 log("No transcript available, using speaker-only mode (lower similarity).")
                 self.prompt = self.model.create_voice_clone_prompt(ref_audio=str(ref), x_vector_only_mode=True)
 
-    def speak(self, text, seed):
+    def speak_many(self, texts, seed):
+        """Several pieces in one batch -> [(wave, sample rate, ran_away)]. A piece 'ran away' when it used up almost all the tokens it may have."""
         import numpy as np
         import torch
-        tokens = min(1024, int(max(8.0, len(text) * self.per_char + 5) * 12.5))   # 12.5 tokens per second of speech
-        kw = {"repetition_penalty": 1.05, "max_new_tokens": tokens, "max_time": 180.0}
+        caps = [min(1024, int(max(8.0, len(t) * self.per_char + 5) * 12.5)) for t in texts]   # 12.5 tokens per second of speech
+        kw = {"repetition_penalty": 1.05, "max_new_tokens": max(caps), "max_time": 180.0}
         torch.manual_seed(seed)
-        wavs, sr = self.model.generate_voice_clone(text=[text], language=[self.lang], voice_clone_prompt=self.prompt, **kw)
-        w = np.asarray(wavs[0], dtype="float32")
-        return w, sr, len(w) / sr >= (tokens / 12.5) * 0.97   # True = hit the cap, i.e. it ran away
+        n = len(texts)
+        wavs, sr = self.model.generate_voice_clone(text=list(texts), language=[self.lang] * n, voice_clone_prompt=self.prompt * n, **kw)
+        out = []
+        for w, cap in zip(wavs, caps):
+            w = np.asarray(w, dtype="float32")
+            out.append((w, sr, len(w) / sr >= (cap / 12.5) * 0.97))
+        return out
+
+    def speak(self, text, seed):
+        return self.speak_many([text], seed)[0]
+
+
+def change_speed(audio, sr, speed):
+    """Speak faster (>1) or slower (<1) without changing the pitch: ffmpeg's atempo if ffmpeg is installed, otherwise librosa."""
+    import numpy as np
+    import soundfile as sf
+    if abs(speed - 1.0) < 0.01:
+        return audio
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg:
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            src, dst = pathlib.Path(d) / "in.wav", pathlib.Path(d) / "out.wav"
+            sf.write(str(src), audio, sr, subtype="FLOAT")
+            subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-i", str(src), "-filter:a", f"atempo={speed:.4f}", str(dst)], check=True)
+            out, _ = sf.read(str(dst), dtype="float32")
+        return np.asarray(out, dtype="float32")
+    import librosa
+    return librosa.effects.time_stretch(audio, rate=speed).astype("float32")
+
+
+def many_safe(engine, texts, seed):
+    """speak_many, one piece after the other if the batch does not fit (for example out of memory)."""
+    try:
+        return engine.speak_many(texts, seed)
+    except Exception as e:  # noqa: BLE001
+        if len(texts) == 1:
+            raise
+        log(f"  batch of {len(texts)} failed ({type(e).__name__}), going one by one")
+        return [engine.speak(t, seed + i) for i, t in enumerate(texts)]
+
+
+def similarity(text, heard, lang):
+    """How well what Whisper heard matches the text, 0 to 1. Extra or repeated words count against it."""
+    import difflib
+    import re as _re
+    if lang in CJK:
+        x, y = list(_re.sub(r"[\s\W]", "", text)), list(_re.sub(r"[\s\W]", "", heard))
+    else:
+        x, y = _re.sub(r"[^\w ]", "", text.lower()).split(), _re.sub(r"[^\w ]", "", heard.lower()).split()
+    if not x:
+        return 1.0
+    r = difflib.SequenceMatcher(None, x, y).ratio()
+    return min(r, 0.5) if len(y) > len(x) * 1.3 + 1 else r
+
+
+def broken(r):
+    import numpy as np
+    return r[2] or not len(r[0]) or float(np.abs(r[0]).max()) < 0.01
+
+
+def listen_back(results, chunks, lang):
+    """Let Whisper listen to each piece again: -> one score per piece (a broken piece scores 0)."""
+    return [0.0 if broken(r) else similarity(c, transcribe(r[0], lang, quiet=True)[0], lang) for r, c in zip(results, chunks)]
 
 
 def speak(a):
@@ -217,24 +290,40 @@ def speak(a):
     chunks = split_text(text, CHUNK_CHARS // 2 if lang in CJK else CHUNK_CHARS)
     seed = a.seed if a.seed is not None else random.randrange(1, 2**31)
     log(f"Speaking {len(text)} characters in {len(chunks)} piece(s), seed {seed}")
-    parts, sr_out = [], None
+    n = len(chunks)
     t0 = time.time()
-    for i, chunk in enumerate(chunks, 1):
-        for attempt in range(3):
-            w, sr, ran_away = engine.speak(chunk, seed + attempt * 7919)
-            peak = float(np.abs(w).max()) if len(w) else 0.0
-            if not ran_away and peak >= 0.01:
-                break
-            log(f"  piece {i}: {'ran away' if ran_away else 'silent'}, trying again with another seed")
-        else:
-            die(f"piece {i} failed 3 times: \"{chunk[:60]}...\". Shorten or reword that sentence, or try --seed.")
-        parts.append(w)
-        sr_out = sr
-        log(f"[{i}/{len(chunks)}] {len(w) / sr:.1f} s of audio ({time.time() - t0:.0f} s elapsed)")
+    results = [None] * n
+    for start in range(0, n, BATCH):                      # 1) all pieces, a few at a time
+        idx = list(range(start, min(n, start + BATCH)))
+        for i, r in zip(idx, many_safe(engine, [chunks[i] for i in idx], seed + start)):
+            results[i] = r
+        log(f"[{idx[-1] + 1}/{n}] {time.time() - t0:.0f} s elapsed")
+    scores = listen_back(results, chunks, lang) if a.check else [0.0 if broken(r) else 1.0 for r in results]   # 2) does it say what was written?
+    for attempt in range(1, 4):                           # 3) pieces that do not are made again, together, with another seed
+        bad = [i for i in range(n) if scores[i] < MIN_MATCH]
+        if not bad:
+            break
+        log(f"  {len(bad)} piece(s) do not match the text (best {max(scores[i] for i in bad):.2f}), making them again (try {attempt})")
+        new = many_safe(engine, [chunks[i] for i in bad], seed + attempt * 7919)
+        new_scores = listen_back(new, [chunks[i] for i in bad], lang) if a.check else [0.0 if broken(r) else 1.0 for r in new]
+        improved = False
+        for i, r, sc in zip(bad, new, new_scores):
+            if sc > scores[i] + 0.02:
+                results[i], scores[i], improved = r, sc, True   # keep the try that matches the text best
+        if not improved:                                   # the same score again: more tries will not help (often Whisper's own slip)
+            break
+    for i, r in enumerate(results):
+        if broken(r):
+            die(f"piece {i + 1} failed 4 times: \"{chunks[i][:60]}...\". Shorten or reword that sentence, or try --seed.")
+        if scores[i] < MIN_MATCH:
+            log(f"  piece {i + 1} still differs from the text (match {scores[i]:.2f}), keeping the best try")
+    parts = [r[0] for r in results]
+    sr_out = results[0][1]
     gap = np.zeros(int(GAP * sr_out), dtype="float32")
     audio = parts[0]
     for p in parts[1:]:
         audio = np.concatenate([audio, gap, p])
+    audio = change_speed(audio, sr_out, a.speed)
     out = pathlib.Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     sf.write(str(out), audio, sr_out, subtype="PCM_16")   # the model's own sample rate (24 kHz), not resampled
@@ -252,6 +341,8 @@ def main():
     s = sub.add_parser("speak")
     s.add_argument("--model", default="")
     s.add_argument("--voice-dir", required=True)
+    s.add_argument("--no-check", dest="check", action="store_false")
+    s.add_argument("--speed", type=float, default=1.0)
     s.add_argument("--text-file", required=True)
     s.add_argument("--out", required=True)
     s.add_argument("--lang", default="auto")
