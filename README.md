@@ -11,7 +11,7 @@ python3 tts.py
 ```
 
 `tts` on its own guides you: it asks for the language, lets you pick a saved voice or give a new recording (5 to 15 seconds, one person),
-asks for the text and writes the result to `out/`. The first run also sets everything up and downloads the model (about 4 GB), once.
+asks for the text and writes the result to `out/`. For a new recording, Whisper writes down what is said (`voices/<name>/ref.txt`, you can correct it there by hand). The first run also sets everything up and downloads the model (about 4 GB), once.
 
 On Windows use `python` instead of `python3`. Want a plain `tts` command? On Mac and Linux: `chmod +x tts.py && ln -s "$PWD/tts.py" ~/.local/bin/tts`.
 
@@ -44,10 +44,10 @@ and makes it again if it does not match the text (the model sometimes repeats a 
 | `--seed N` | same seed and text give the same result; change it for another take |
 | `-o FILE` | output file (`.mp3` and others work if ffmpeg is installed) |
 | `--fast` | skip the listen-back check (about 10 seconds quicker, but a repeated or invented word can stay in) |
-| `--list-voices` | show the voices you saved, with the language of their recording |
+| `--list-voices` | show the voices you saved |
 | `-v` | show everything the setup and the voice engine print |
 
-Saved voices live in `voices/<name>/`; the language of the recording is kept in the `meta.json` of each voice.
+Saved voices live in `voices/<name>/` (`ref.wav` and `ref.txt`).
 
 ## Run it as service
 

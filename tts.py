@@ -10,7 +10,6 @@ Run with --help for all options. This file only needs a plain Python 3.9+; the m
 """
 import argparse
 import datetime
-import json
 import os
 import pathlib
 import platform
@@ -192,25 +191,10 @@ def voice_name(s):
 
 
 def voice_dirs():
-    """All saved voices as {name: folder} (voices/<name>/ with ref.wav, ref.txt and meta.json)."""
+    """All saved voices as {name: folder} (voices/<name>/ with ref.wav and ref.txt)."""
     if not VOICES.is_dir():
         return {}
     return {d.name: d for d in sorted(VOICES.iterdir()) if d.is_dir() and not d.name.startswith("_") and (d / "ref.wav").exists()}
-
-
-def voice_meta(d):
-    try:
-        return json.loads((d / "meta.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-
-
-def set_voice_lang(d, lang):
-    """Write the language of the recording into the voice's meta.json (other entries stay)."""
-    if lang and lang != "auto":
-        meta = voice_meta(d)
-        meta["lang"] = lang
-        (d / "meta.json").write_text(json.dumps(meta, indent=1, ensure_ascii=False), encoding="utf-8")
 
 
 def saved_voices():
@@ -347,14 +331,27 @@ def make_clip(a, hw, text, lang, voice="", clone=""):
     ensure_env(model, hw, True)
     if ref:
         prepare_voice(model, voice_dir, ref, a.clone_text, lang)
-        if a.save_voice:
-            set_voice_lang(voice_dir, lang)
     speak(model, voice_dir, text, wav, lang, a.seed, a.device, a.fast, a.speed)
     finish_output(wav, out)
     status(f"Saved: {rel(out)}")
 
 
 # ---------- first-start setup ----------
+
+def new_voice(model, lang):
+    """A new voice from a recording (Whisper writes down what is said into ref.txt without asking). -> name"""
+    say("\nRecording: 5 to 15 seconds of one person speaking clearly (drag the file here)")
+    while True:
+        ref = clean_path(ask("File:"))
+        if os.path.isfile(ref):
+            break
+        say("File not found, try again.")
+    default = voice_name(pathlib.Path(ref).stem) or "voice"
+    voice = voice_name(ask("Name", default)) or default
+    voice_dir = VOICES / voice
+    prepare_voice(model, voice_dir, ref, "", lang)
+    return voice
+
 
 def dialog(hw):
     """The guided run: language, voice (saved or a new recording), text. -> (lang, voice, text)"""
@@ -363,31 +360,20 @@ def dialog(hw):
     lang = ask(f"Language ({', '.join(QWEN_LANGS)})", "en").lower()
     while lang not in QWEN_LANGS:
         lang = ask("Please pick one of the list", "en").lower()
-    voice, ref = "", ""
+    voice = ""
     voices = saved_voices()
     if voices:
         say("\nVoices")
-        dirs = voice_dirs()
         for i, v in enumerate(voices, 1):
-            say(f"  {i:>2}  {v:<22}{voice_meta(dirs[v]).get('lang', '')}")
+            say(f"  {i:>2}  {v}")
         say("   n  new recording")
         pick = ask("Choose", "n").strip().lower()
         hit = (voices[int(pick) - 1], None) if pick.isdigit() and 1 <= int(pick) <= len(voices) else find_voice(pick) if pick != "n" else None
         voice = hit[0] if hit else ""
-    if not voice:
-        say("\nRecording: 5 to 15 seconds of one person speaking clearly (drag the file here)")
-        while True:
-            ref = clean_path(ask("File:"))
-            if os.path.isfile(ref):
-                break
-            say("File not found, try again.")
-        default = voice_name(pathlib.Path(ref).stem) or "voice"
-        voice = voice_name(ask("Name", default)) or default
     model = recommend(lang, hw)
     ensure_env(model, hw, True)
-    if ref:
-        prepare_voice(model, VOICES / voice, ref, "", lang)
-        set_voice_lang(VOICES / voice, lang)
+    if not voice:
+        voice = new_voice(model, lang)
     say("")
     t = ""
     while not t:
@@ -477,8 +463,7 @@ def main():
             say(f"{m}\n   {info['title']}: {info['note']}\n   languages: {', '.join(info['langs'])}")
         return
     if a.list_voices:
-        dirs = voice_dirs()
-        say("\n".join(f"{v:<22}{voice_meta(d).get('lang', '')}" for v, d in dirs.items()) or "No saved voices yet. Run tts to record one.")
+        say("\n".join(saved_voices()) or "No saved voices yet. Run tts to record one.")
         return
     if a.serve:
         return serve(a, hw)
