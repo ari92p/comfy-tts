@@ -20,7 +20,9 @@ The first run also sets everything up and downloads the models (about 6 GB), onc
 
 On Windows use `python` instead of `python3`. Want a plain `easy-tts` command? On Mac and Linux: `chmod +x easy-tts.py && ln -s "$PWD/easy-tts.py" ~/.local/bin/easy-tts` (the examples below use it; with the file alone, write `python3 easy-tts.py` instead).
 
-You need Python 3.9+ and a GPU: an NVIDIA card or a Mac with Apple Silicon. Everything else (the Python setup tool `uv`, the packages, the models) is installed by the first run, inside this folder.
+You need a GPU (an NVIDIA card or a Mac with Apple Silicon) and Python 3.9+. Everything else (the Python setup tool `uv`, the packages, the models) is installed by the first run, inside this folder.
+
+No Python on the computer (typical on Windows)? Run the one-time setup first: `./setup.sh` (Mac/Linux) or double-click `setup.cmd` (Windows). It fetches `uv`, `uv` fetches Python, and it prints the command to start the tool.
 
 ## Run it as command
 
