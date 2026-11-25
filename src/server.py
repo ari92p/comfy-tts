@@ -104,6 +104,25 @@ def fetch(repo):
         return snapshot_download(repo)
 
 
+def prefetch():
+    """Make sure all models are on disk before the service starts listening. A download inside the first request would give
+    no feedback and the watchdog (HARD_SECONDS) would end a slow download half way. Already cached models cost nothing."""
+    if os.environ.get("HF_HUB_OFFLINE") == "1":
+        return
+    log("checking models (the first start downloads about 9 GB, once; the progress bars below show it)")
+    for kind in ("clone", "custom"):
+        try:
+            fetch(MODELS[kind])
+        except Exception as e:  # noqa: BLE001
+            log(f"could not download {MODELS[kind]}: {e!r}. It will be tried again on the first request.")
+    try:
+        from faster_whisper.utils import download_model
+        download_model(WHISPER)
+    except Exception as e:  # noqa: BLE001
+        log(f"could not download the Whisper model {WHISPER}: {e!r}")
+    log("models ready")
+
+
 def model(kind):
     if kind not in _models:
         t = time.time()
@@ -624,6 +643,7 @@ if __name__ == "__main__":
     a = ap.parse_args()
     VOICES.mkdir(parents=True, exist_ok=True)
     tidy_voices()
+    prefetch()
     threading.Thread(target=janitor, daemon=True).start()
     threading.Thread(target=watchdog, daemon=True).start()
     log(f"voice service on {a.host}:{a.port}, voices in {VOICES}")

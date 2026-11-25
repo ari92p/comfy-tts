@@ -1,176 +1,125 @@
 # easy-tts-voice-clone
 
-Text to speech on your own computer: pick a built-in speaker, or clone a voice from a 10-second recording.
-No account, no API key, everything runs locally. It can also run as a small HTTP voice service for other programs.
+Text to speech on your own computer. Pick a built-in speaker, or clone a voice from a 10-second recording.
+No account, no API key, everything runs locally.
+
+## Quick start
 
 ```bash
 git clone https://github.com/ari92p/easy-tts-voice-clone && cd easy-tts-voice-clone
 python3 tts.py
 ```
 
-The guided mode asks a few questions, helps you pick a model that fits your computer, sets everything up and
-generates your first clip. At the end it prints the one-line command that repeats it without questions.
+The guided mode asks a few questions, sets everything up, makes your first clip and prints the one-line command that repeats it.
+On Windows use `python` instead of `python3`.
 
-## One command, no questions
+You need Python 3.9+, [`uv`](https://docs.astral.sh/uv/) (`brew install uv`, or `curl -LsSf https://astral.sh/uv/install.sh | sh`,
+on Windows `irm https://astral.sh/uv/install.ps1 | iex`) and a GPU: an NVIDIA card or a Mac with Apple Silicon.
+The first run downloads PyTorch and the model (about 4 GB for the model), once.
 
-Built-in speaker:
+## Use it
+
+Choose exactly one voice:
+
+| You type | What it means | Recording needed? |
+| --- | --- | --- |
+| `--speaker ryan` | a ready-made voice (list: `--list-speakers`) | no |
+| `--clone me.wav` | clone a new voice from your recording | yes, once |
+| `--voice me` | a cloned voice you saved earlier | no |
 
 ```bash
+# a built-in speaker
 python3 tts.py --speaker ryan --text "Hello, this is a built-in voice." --lang en
 python3 tts.py --speaker aiden --style "slowly and sadly" --text "I miss the summer." --lang en
+
+# clone your own voice and keep it for later
+python3 tts.py --clone me.wav --save-voice me --text "First line" --lang en
+python3 tts.py --voice me --text "Any later line" --lang en
+
+# a long text from a file, to a file
+python3 tts.py --voice me --text-file chapter1.txt --lang en -o chapter1.wav
 ```
 
-Your own voice (clone it from a recording):
-
-```bash
-python3 tts.py --ref me.wav --text "Hello, this is my cloned voice." --lang en
-python3 tts.py --ref me.mp3 --text-file chapter1.txt --lang de -o chapter1.wav
-```
-
-Keep a cloned voice so you don't prepare the recording every time:
-
-```bash
-python3 tts.py --ref me.wav --save-voice me --text "First line"     # saved as voices/me
-python3 tts.py --voice me --text "Any later line" -o later.wav
-```
-
-Results land in `out/`. Long texts are spoken sentence by sentence and joined. On Windows use `python` instead of `python3`.
+Results go to `out/` (or where `-o` says). Long texts are spoken sentence by sentence and joined.
 
 | Option | What it does |
 | --- | --- |
-| `--speaker NAME` | built-in speaker, see `--list-speakers`; `--style "..."` says how to speak |
-| `--ref FILE` | clone from this recording (wav, mp3, m4a, ...) |
-| `--voice NAME` / `--save-voice NAME` | use / keep a prepared cloned voice |
 | `--text "..."` / `--text-file FILE` | what to say |
-| `--lang de` | language of the text (default `auto`: the model decides) |
+| `--lang de` | language of the text: en de fr es it pt ru zh ja ko (default `auto`) |
+| `--style "..."` | with `--speaker`: how to speak, e.g. "slowly and sadly" (plain English works best) |
+| `--save-voice NAME` | with `--clone`: keep the voice for `--voice NAME` |
+| `--clone-text "..."` | with `--clone`: the exact words of your recording (otherwise Whisper listens for you) |
 | `--seed N` | same seed and text give the same result; change it for another take |
-| `-o FILE` | output (`.wav`; `.mp3` and others work if ffmpeg is installed) |
-| `--ref-text "..."` | exact words of your recording; otherwise Whisper listens for you |
+| `-o FILE` | output file (`.mp3` and others work if ffmpeg is installed) |
+| `--list-speakers`, `--list-voices` | show what you can choose |
 | `-y` | set up the Python environment without asking |
-| `--list-models`, `--list-speakers`, `--list-voices`, `--setup [MODEL]` | look around, or only install |
 
-## Which model, which speaker?
-
-There is one model: Qwen3-TTS 1.7B, the largest model of the Qwen3-TTS family. It has two parts that are loaded as needed:
-the Base model clones a voice, the CustomVoice model speaks with the built-in speakers. It supports 10 languages: en de fr es it pt ru zh ja ko.
-It needs a GPU: an NVIDIA card (8+ GB is a rule of thumb) or an Apple Silicon Mac.
+## Speakers and languages
 
 Built-in speakers: `aiden`, `ryan` (English), `vivian`, `serena`, `uncle_fu`, `dylan`, `eric` (Chinese), `ono_anna` (Japanese), `sohee` (Korean).
-**Each speaker is native in one language and speaks the others with an accent.** For English, Chinese, Japanese and Korean the
-speakers are the easy choice. For German, French and the rest, a clone of a recording by a native speaker sounds far more natural.
+**Each speaker is native in one language and speaks the others with an accent.** For English, Chinese, Japanese and Korean they are the easy choice.
+For German, French and the rest, a clone of a recording by a native speaker sounds far more natural.
 
-Licenses: Qwen3-TTS is Apache-2.0. This repository is MIT.
-
-## What is in here
-
-```
-tts.py               the program: guided mode and one-command mode
-start_server.cmd     keeps the voice service running (Windows)
-start_server.command double-click on a Mac to start the voice service
-start_server.sh      the same for Linux (run it in a terminal)
-src/engine.py        runs inside the private environment: prepares references, speaks
-src/server.py        the HTTP voice service
-requirements/        the Python packages of the private environment
-examples/            two small texts to try
-```
-
-`voices/` (saved voices), `out/` (results) and `.venvs/` (the environment) are created on first use and are not part of the repository.
-
-## What you need
-
-- Python 3.9 or newer to run `tts.py` (it uses nothing but the standard library).
-- [`uv`](https://docs.astral.sh/uv/) once, to build the model environments. It also fetches the right Python version itself.
-  `brew install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`, on Windows `irm https://astral.sh/uv/install.ps1 | iex`.
-- A few GB of disk space and a few minutes on first use. Models and libraries are downloaded once.
-- Optional: `ffmpeg` (reading unusual audio formats, writing mp3).
-
-Everything runs in a private environment in `.venvs/`. Nothing is installed globally. Delete `.venvs/` to reset.
-
-## Sound quality
-
-The files are exactly what the model makes: 24 kHz, 16 bit WAV, nothing resampled or processed. The model has no higher resolution to give.
-If a video or audio program insists on 48 kHz, convert it yourself, for example with
-`ffmpeg -i in.wav -ar 48000 -c:a pcm_s24le out.wav`; that makes the file compatible but adds no detail.
-What really decides how good it sounds: the model (there is only the largest one), a clean reference recording, and `--seed`
-(try a few seeds and keep the best take). The HTTP service still answers with 24 kHz WAV files, as the Studio expects.
-
-## A good reference recording (for cloning)
+## A good recording for cloning
 
 The recording matters more than any setting.
 
 - 5 to 15 seconds of **one** person, spoken normally. Longer files are cut for you at a sentence end.
 - No music, no echo, no second voice. A phone recording in a quiet room is fine.
 - Speak the language you want to generate, ideally in the tone you want back.
-- If the voice drifts or sounds off, try another recording before blaming the model. Then try `--seed`.
+- If the voice sounds off, try another recording first, then another `--seed`.
+
+## Models, downloads and files
+
+The model is Qwen3-TTS 1.7B (Apache-2.0), the largest of its family: the Base part clones, the CustomVoice part has the built-in speakers.
+**You don't have to put any model anywhere.** On first use the program downloads what it needs from Hugging Face into its cache,
+`~/.cache/huggingface/hub` (Windows: `C:\Users\<you>\.cache\huggingface\hub`, or the place `HF_HOME` points to):
+
+| Download | When | Size |
+| --- | --- | --- |
+| `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | cloning | about 4.2 GB |
+| `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` | built-in speakers | about 4.2 GB |
+| Whisper `small` | the transcript of your recording | about 0.5 GB |
+
+Already have a model? Put its cache folder (e.g. `models--Qwen--Qwen3-TTS-12Hz-1.7B-Base`) into that cache and nothing is downloaded.
+
+Inside the repository folder only this is created (none of it goes into git): `.venvs/` (the Python environment), `voices/` (saved voices) and `out/` (results).
+Nothing is installed globally. Delete `.venvs/` to reset.
+
+The audio is exactly what the model makes, 24 kHz, 16 bit WAV, nothing resampled. If a program insists on 48 kHz:
+`ffmpeg -i in.wav -ar 48000 -c:a pcm_s24le out.wav` makes it compatible, but adds no detail.
 
 ## Run it as a voice service
 
 ```bash
-python3 tts.py --serve                       # http://127.0.0.1:8190
-python3 tts.py --serve --host 0.0.0.0        # reachable from other computers (there is no login, use a firewall)
+python3 tts.py --serve                      # http://127.0.0.1:8190
+python3 tts.py --serve --host 0.0.0.0       # reachable from other computers (no login, use a firewall)
 ```
 
-This is the HTTP service the Studio uses for its Voice page: speakers, saved voices with several samples, Whisper transcripts,
-`POST /generate`. It keeps one model loaded at a time, frees the GPU after 5 minutes without requests, and restarts itself
-if a job hangs. The endpoints are listed at the top of [src/server.py](src/server.py). It uses Qwen3-TTS 1.7B by default (Base for cloning, CustomVoice for speakers).
+A small HTTP service for other programs: speakers, saved voices with several samples, Whisper transcripts, `POST /generate`.
+The endpoints are listed at the top of [src/server.py](src/server.py). On start it downloads missing models (about 8.4 GB for the two Qwen models plus Whisper, with progress bars),
+then answers one job at a time, frees the GPU after 5 minutes without requests and restarts itself if a job hangs.
+Options: `--port`, `--voices-dir FOLDER`, `--whisper small`, `--offline` (never contact Hugging Face).
+`start_server.cmd` (Windows) and `start_server.sh` (Mac/Linux) start it and keep it running.
 
-Options: `--port`, `--voices-dir FOLDER` (where voices are kept, default `voices/`), `--whisper small` (a much smaller transcript model than the default `large-v3-turbo`), `--offline` (never contact Hugging Face).
-To keep it running, use `start_server.cmd` (Windows), `start_server.command` (Mac, double-click) or `start_server.sh` (Linux); they restart the service if it ends.
-If macOS refuses to open the `.command` file after a zip download, right-click it and choose Open once.
-Voices cloned on the command line and voices saved through the service share the same folder format, so both see each other's voices.
+## Troubleshooting
 
-### Replacing an older `voice_server.py` setup
+- **A `SoX could not be found` warning:** harmless.
+- **`ran away` or a piece fails 3 times:** the model sometimes babbles on one sentence. Reword or shorten it, or change `--seed`.
+- **CUDA out of memory:** close other programs that use the GPU. The model needs several GB on its own.
+- **Windows with an NVIDIA card but it runs on the CPU:** delete `.venvs/` and run again; the setup installs the CUDA build of PyTorch.
+- **The first run is slow before it speaks:** that is the model download. Later runs start in seconds.
+- **The service answers 503 "busy":** it runs one job at a time; try again.
 
-If you already run the older single-file `voice_server.py` (same HTTP API), you can swap it without touching the programs that talk to it:
+## Tested
 
-1. Keep your voices: start the new service with `--voices-dir <your existing voices folder>`; it reads that folder as it is.
-2. Keep your start mechanism (a scheduled task, a service, a start script): only change the command it runs to
-   `python tts.py --serve --host 0.0.0.0 --port <the old port> --voices-dir <voices folder> -y`.
-   On Windows, put it in a `.cmd` file like `start_server.cmd` and add `--offline` if the PC must never contact Hugging Face
-   (the models then have to be in the Hugging Face cache, point `HF_HOME` at it).
-3. Back up the old script and the voices folder first, and test on a second port (`--port 8191`) before you switch.
-
-## What has been tested
-
-Tested on Windows with an NVIDIA RTX 5080 (16 GB), each time generating audio and transcribing it again with Whisper:
-
-- cloning with `qwen3-tts-1.7b`: reference preparation with automatic transcript, a long text in several pieces, the text comes back word for word;
-- built-in speakers with `--style` on the command line (`aiden`);
-- `--serve`, set up from scratch, on a second port next to the old service and with a copy of its 16 voices: `/health`, `/speakers`, `/voices`,
-  `/generate` with a speaker (`ryan`, with `instruct`) and with an existing cloned voice, `/transcribe`;
-- the command line using a voice that was saved by the service (same folder format);
-- the same again with the final code layout (`src/`), set up from scratch with `tts.py`, plus the service endpoints for extra samples
-  (add, listen, choose as template, delete), uploading, renaming and deleting a voice.
-
-Tested on a Mac (Apple M5, 24 GB, Apple GPU), set up from scratch with the system Python 3.9: cloning with `qwen3-tts-1.7b` and a German
-text of 256 characters took 26 seconds for 15 seconds of audio, and the text came back word for word when transcribed again. All nine
-built-in speakers and 14 saved voices also ran there; the German clips came back word for word apart from one word in one clip.
-`--serve --whisper small` ran there too: uploading a voice (with automatic transcript), `/generate` with a speaker and with the cloned voice,
-`/transcribe`, renaming, extra samples and deleting.
-
-**Not tested yet:** switching the real service over (the old one was left untouched), and Linux or CPU only.
-The GPU memory hint (8+ GB) is a rule of thumb, not a measurement. If something fails, please open an issue with the output.
+Windows with an NVIDIA RTX 5080 (16 GB) and a Mac with Apple M5 (24 GB, Apple GPU): cloning, all built-in speakers and the voice service,
+each time checked by transcribing the generated audio again with Whisper. On the Mac, 15 seconds of speech took about 26 seconds.
+**Not tested:** Linux and CPU only. If something fails, please open an issue with the output.
 
 ## Please use it responsibly
 
 Only clone voices you have the right to clone: your own, or someone who clearly agreed. Don't use cloned voices to deceive,
-impersonate or harass anyone, and check the laws and platform rules where you publish. The generated audio carries no watermark,
-so say when it is synthetic.
+impersonate or harass anyone, and check the laws and platform rules where you publish. The audio carries no watermark, so say when it is synthetic.
 
-## Troubleshooting
-
-- **A `SoX could not be found` warning appears:** harmless, nothing here needs it.
-- **`error: ... ran away` / a piece fails 3 times:** the model sometimes babbles on a sentence. Reword that sentence, shorten it, or change `--seed`.
-- **CUDA out of memory:** close other programs that use the GPU (ComfyUI, games). The 1.7B model needs several GB on its own.
-- **Windows with an NVIDIA card but it runs on the CPU:** delete `.venvs/` and run again; the setup installs the CUDA build of PyTorch.
-- **Mac or CPU is slow:** on an Apple M5, 15 seconds of speech took about 26 seconds. CPU only is much slower.
-- **The first run takes minutes before it speaks:** that is the model download (about 4.5 GB for the Base model, the same again for the CustomVoice model), later runs start in seconds.
-- **The service answers "busy" (503):** it runs one job at a time; the client should wait and try again.
-
-## How it works
-
-`tts.py` detects your hardware, builds the right environment, and calls `src/engine.py` inside it.
-For cloning, `engine.py` turns your recording into a clean 24 kHz reference (cut to at most 15 s, transcribed with Whisper for Qwen).
-It then speaks the text in sentence-sized pieces and re-rolls a piece with another seed if it runs away or comes out silent.
-Settings come from a lot of trial and error with Qwen3-TTS (repetition penalty 1.05, a hard cap on generated tokens, no post-processing).
-`src/server.py` is the long-running version of the same idea behind an HTTP API.
+MIT license. Qwen3-TTS is Apache-2.0.

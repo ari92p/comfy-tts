@@ -3,7 +3,7 @@
 
   python3 tts.py                                    guided mode: asks a few questions, helps you pick a model
   python3 tts.py --speaker ryan --text "Hello!"     built-in speaker, one command, no questions
-  python3 tts.py --ref me.wav --text "Hello!"       your own cloned voice (writes out/me-<time>.wav)
+  python3 tts.py --clone me.wav --text "Hello!"     your own cloned voice (writes out/me-<time>.wav)
 
 Run with --help for all options. This file only needs a plain Python 3.9+; the models run in private virtualenvs
 (.venvs/) that are created for you on first use, see README.md.
@@ -265,7 +265,7 @@ def headless(a, hw):
             die(f"no saved voice called '{a.voice}'. Saved voices: {', '.join(saved_voices()) or 'none yet'}")
         label = voice_name(a.voice)
     else:
-        ref = clean_path(a.ref)
+        ref = clean_path(a.clone)
         if not os.path.isfile(ref):
             die(f"reference file not found: {ref}")
         label = voice_name(a.save_voice) if a.save_voice else "_last"
@@ -275,7 +275,7 @@ def headless(a, hw):
     say(f"Model: {MODELS[model]['title']}   Language: {LANG_NAMES.get(lang, lang)}   Device: {describe(hw)}")
     ensure_env(model, hw, a.yes or not sys.stdin.isatty())
     if ref:
-        prepare_voice(model, voice_dir, ref, a.ref_text, lang)
+        prepare_voice(model, voice_dir, ref, a.clone_text, lang)
     speak(model, voice_dir, text, wav, lang, a.seed, a.device, a.speaker, a.style)
     finish_output(wav, out)
     say(f"\nSaved: {out}")
@@ -364,7 +364,7 @@ def guided(hw):
     if speaker:
         argv += ["--speaker", speaker] + (["--style", style] if style else [])
     else:
-        argv += ["--voice", voice or label] if (voice or label) else ["--ref", ref]
+        argv += ["--voice", voice or label] if (voice or label) else ["--clone", ref]
     argv += ["--text", text] if len(text) <= 200 else ["--text-file", "my-text.txt"]
     argv += ["--lang", lang, "--model", model, "-o", rel(out)]
     say("\nNext time, this one command does everything above without questions:")
@@ -411,11 +411,11 @@ def main():
     ap = argparse.ArgumentParser(
         description="Text to speech with built-in speakers or a cloned voice. No arguments = guided mode.",
         epilog="Examples:  python3 tts.py --speaker ryan --text \"Hello world\" --lang en\n"
-               "          python3 tts.py --ref me.wav --text \"Hello world\" --lang en",
+               "          python3 tts.py --clone me.wav --text \"Hello world\" --lang en",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--speaker", help="a built-in speaker (see --list-speakers), no recording needed")
     ap.add_argument("--style", default="", help="with --speaker: how to speak, e.g. \"slowly and sadly\" (plain English works best)")
-    ap.add_argument("--ref", help="to clone: reference recording, 5-15 s of one speaker (wav, mp3, m4a, ...)")
+    ap.add_argument("--clone", metavar="FILE", help="clone a voice from this recording: 5-15 s of one speaker (wav, mp3, m4a, ...)")
     ap.add_argument("--voice", help="use a voice saved earlier with --save-voice")
     ap.add_argument("--save-voice", metavar="NAME", help="keep the prepared reference under this name for later (--voice NAME)")
     ap.add_argument("--text", help="what to say")
@@ -423,7 +423,7 @@ def main():
     ap.add_argument("-o", "--out", help="output file (default: out/<voice>-<time>.wav; .mp3 works if ffmpeg is installed)")
     ap.add_argument("--lang", default="auto", help="language of the text, e.g. en, de, fr (default: auto = let the model decide)")
     ap.add_argument("--model", default="auto", choices=["auto"] + list(MODELS), help="default auto = best for your language and computer")
-    ap.add_argument("--ref-text", help="exact words spoken in the reference (default: Whisper listens for you)")
+    ap.add_argument("--clone-text", help="with --clone: the exact words spoken in the recording (default: Whisper listens for you)")
     ap.add_argument("--seed", type=int, help="same seed + same text = same result; change it for a different take")
     ap.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"])
     ap.add_argument("-y", "--yes", action="store_true", help="set up the Python environment without asking")
@@ -449,7 +449,7 @@ def main():
         say("\n".join(f"{n:10} {note}" for n, note in SPEAKERS))
         return
     if a.list_voices:
-        say("\n".join(saved_voices()) or "No saved voices yet. Create one with: --ref FILE --save-voice NAME")
+        say("\n".join(saved_voices()) or "No saved voices yet. Create one with: --clone FILE --save-voice NAME")
         return
     if a.serve:
         return serve(a, hw)
@@ -459,9 +459,9 @@ def main():
             die(f"unknown model '{m}'. Choose from: {', '.join(MODELS)}")
         ensure_env(m, hw, True)
         return
-    if a.speaker or a.ref or a.voice or a.text or a.text_file:
-        if sum(bool(x) for x in (a.speaker, a.ref, a.voice)) != 1:
-            die("give exactly one of --speaker NAME (built-in), --ref FILE (clone a new recording) or --voice NAME (a saved clone)")
+    if a.speaker or a.clone or a.voice or a.text or a.text_file:
+        if sum(bool(x) for x in (a.speaker, a.clone, a.voice)) != 1:
+            die("give exactly one of --speaker NAME (built-in), --clone FILE (clone a new recording) or --voice NAME (a saved clone)")
         if (a.text is None) == (a.text_file is None):
             die("give exactly one of --text \"...\" or --text-file FILE")
         return headless(a, hw)
