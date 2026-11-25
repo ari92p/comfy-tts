@@ -43,7 +43,6 @@ Results land in `out/`. Long texts are spoken sentence by sentence and joined. O
 | `--voice NAME` / `--save-voice NAME` | use / keep a prepared cloned voice |
 | `--text "..."` / `--text-file FILE` | what to say |
 | `--lang de` | language of the text (default `auto`: the model decides) |
-| `--model` | `auto` (default), `qwen3-tts-1.7b` or `qwen3-tts-0.6b` |
 | `--seed N` | same seed and text give the same result; change it for another take |
 | `-o FILE` | output (`.wav`; `.mp3` and others work if ffmpeg is installed) |
 | `--ref-text "..."` | exact words of your recording; otherwise Whisper listens for you |
@@ -52,10 +51,9 @@ Results land in `out/`. Long texts are spoken sentence by sentence and joined. O
 
 ## Which model, which speaker?
 
-| Model | Languages | Does | Notes |
-| --- | --- | --- | --- |
-| `qwen3-tts-1.7b` | 10: en de fr es it pt ru zh ja ko | built-in speakers **and** cloning | the best quality; an NVIDIA GPU with 8+ GB is the tested setup |
-| `qwen3-tts-0.6b` | same 10 | speakers and cloning | smaller and faster, a bit less similar |
+There is one model: Qwen3-TTS 1.7B, the largest model of the Qwen3-TTS family. It has two parts that are loaded as needed:
+the Base model clones a voice, the CustomVoice model speaks with the built-in speakers. It supports 10 languages: en de fr es it pt ru zh ja ko.
+It needs a GPU: an NVIDIA card (8+ GB is a rule of thumb) or an Apple Silicon Mac.
 
 Built-in speakers: `aiden`, `ryan` (English), `vivian`, `serena`, `uncle_fu`, `dylan`, `eric` (Chinese), `ono_anna` (Japanese), `sohee` (Korean).
 **Each speaker is native in one language and speaks the others with an accent.** For English, Chinese, Japanese and Korean the
@@ -87,6 +85,14 @@ examples/            two small texts to try
 
 Everything runs in a private environment in `.venvs/`. Nothing is installed globally. Delete `.venvs/` to reset.
 
+## Sound quality
+
+The files are exactly what the model makes: 24 kHz, 16 bit WAV, nothing resampled or processed. The model has no higher resolution to give.
+If a video or audio program insists on 48 kHz, convert it yourself, for example with
+`ffmpeg -i in.wav -ar 48000 -c:a pcm_s24le out.wav`; that makes the file compatible but adds no detail.
+What really decides how good it sounds: the model (there is only the largest one), a clean reference recording, and `--seed`
+(try a few seeds and keep the best take). The HTTP service still answers with 24 kHz WAV files, as the Studio expects.
+
 ## A good reference recording (for cloning)
 
 The recording matters more than any setting.
@@ -107,8 +113,7 @@ This is the HTTP service the Studio uses for its Voice page: speakers, saved voi
 `POST /generate`. It keeps one model loaded at a time, frees the GPU after 5 minutes without requests, and restarts itself
 if a job hangs. The endpoints are listed at the top of [src/server.py](src/server.py). It uses Qwen3-TTS 1.7B by default (Base for cloning, CustomVoice for speakers).
 
-Options: `--port`, `--voices-dir FOLDER` (where voices are kept, default `voices/`), `--size 0.6B` (smaller models for smaller GPUs and Macs),
-`--whisper small` (a much smaller transcript model than the default `large-v3-turbo`), `--offline` (never contact Hugging Face).
+Options: `--port`, `--voices-dir FOLDER` (where voices are kept, default `voices/`), `--whisper small` (a much smaller transcript model than the default `large-v3-turbo`), `--offline` (never contact Hugging Face).
 To keep it running, use `start_server.cmd` (Windows) or `start_server.sh` (Mac/Linux); both restart the service if it ends.
 Voices cloned on the command line and voices saved through the service share the same folder format, so both see each other's voices.
 
@@ -130,18 +135,13 @@ Tested on Windows with an NVIDIA RTX 5080 (16 GB), each time generating audio an
   `/generate` with a speaker (`ryan`, with `instruct`) and with an existing cloned voice, `/transcribe`;
 - the command line using a voice that was saved by the service (same folder format);
 
-Tested on a Mac (Apple M5, 24 GB, Apple GPU) with the 0.6B models, set up from scratch with the system Python 3.9:
+Tested on a Mac (Apple M5, 24 GB, Apple GPU), set up from scratch with the system Python 3.9: cloning with `qwen3-tts-1.7b` and a German
+text of 256 characters took 26 seconds for 15 seconds of audio, and the text came back word for word when transcribed again. All nine
+built-in speakers and 14 saved voices also ran there; the German clips came back word for word apart from one word in one clip.
 
-- cloning with automatic transcript and German text: 7 seconds of audio took 11 seconds;
-- a built-in speaker (`ryan`, with `--style`): 5 seconds of audio took 6 seconds;
-- `--serve --size 0.6B`: `/speakers`, uploading a voice (Whisper wrote the transcript), `/generate` with a speaker and with the uploaded voice,
-  `/transcribe`, renaming and deleting a voice.
-
-The text came back word for word when transcribed again, every time.
-
-**Not tested yet:** `qwen3-tts-1.7b` on the Mac, the service endpoints for extra samples, switching the real service over
-(the old one was left untouched), and Linux or CPU only.
-The size hints in the guided mode are rules of thumb, not measurements. If something fails, please open an issue with the output.
+**Not tested yet:** `--serve` on the Mac, the service endpoints for extra samples, switching the real service over
+(the old one was left untouched), the code layout after it was moved into `src/` on Windows, and Linux or CPU only.
+The GPU memory hint (8+ GB) is a rule of thumb, not a measurement. If something fails, please open an issue with the output.
 
 ## Please use it responsibly
 
@@ -153,10 +153,10 @@ so say when it is synthetic.
 
 - **A `SoX could not be found` warning appears:** harmless, nothing here needs it.
 - **`error: ... ran away` / a piece fails 3 times:** the model sometimes babbles on a sentence. Reword that sentence, shorten it, or change `--seed`.
-- **CUDA out of memory:** use `qwen3-tts-0.6b`, or close other programs using the GPU.
+- **CUDA out of memory:** close other programs that use the GPU (ComfyUI, games). The 1.7B model needs several GB on its own.
 - **Windows with an NVIDIA card but it runs on the CPU:** delete `.venvs/` and run again; the setup installs the CUDA build of PyTorch.
-- **Mac or CPU is slow:** the 0.6B model ran faster than real time on an Apple M5; CPU only is much slower. Use the 0.6B model there.
-- **The first Mac run takes minutes before it speaks:** that is the model download (about 2.5 GB), later runs start in seconds.
+- **Mac or CPU is slow:** on an Apple M5, 15 seconds of speech took about 26 seconds. CPU only is much slower.
+- **The first run takes minutes before it speaks:** that is the model download (about 4.5 GB for the Base model, the same again for the CustomVoice model), later runs start in seconds.
 - **The service answers "busy" (503):** it runs one job at a time; the client should wait and try again.
 
 ## How it works

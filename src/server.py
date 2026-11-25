@@ -52,8 +52,7 @@ from pydantic import BaseModel  # noqa: E402
 
 VOICES = pathlib.Path(os.environ.get("VOICE_DIR") or pathlib.Path(__file__).resolve().parent.parent / "voices")
 IDLE_SECONDS = int(os.environ.get("VOICE_IDLE_SECONDS", "300"))
-SIZE = os.environ.get("VOICE_MODEL_SIZE", "1.7B")   # "1.7B" (default) or "0.6B" for smaller GPUs and Macs
-MODELS = {"clone": f"Qwen/Qwen3-TTS-12Hz-{SIZE}-Base", "custom": f"Qwen/Qwen3-TTS-12Hz-{SIZE}-CustomVoice"}
+MODELS = {"clone": "Qwen/Qwen3-TTS-12Hz-1.7B-Base", "custom": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"}
 WHISPER = os.environ.get("VOICE_WHISPER", "large-v3-turbo")   # e.g. "small" for a much smaller download
 SPEAKERS = [
     {"name": "aiden", "note": "Englisch, Mann (US)"}, {"name": "ryan", "note": "Englisch, Mann"},

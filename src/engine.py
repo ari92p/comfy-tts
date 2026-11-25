@@ -249,8 +249,8 @@ def speak(a):
         audio = np.concatenate([audio, gap, p])
     out = pathlib.Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    sf.write(str(out), audio, sr_out, subtype="PCM_16")
-    log(f"Done: {out}  ({len(audio) / sr_out:.1f} s, seed {seed})")
+    sf.write(str(out), audio, sr_out, subtype="PCM_16")   # the model's own sample rate (24 kHz), not resampled
+    log(f"Done: {out}  ({len(audio) / sr_out:.1f} s, {sr_out // 1000} kHz, seed {seed})")
 
 
 def main():

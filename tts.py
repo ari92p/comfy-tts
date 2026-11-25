@@ -33,12 +33,7 @@ MODELS = {
     "qwen3-tts-1.7b": {
         "backend": "qwen", "repo": "Qwen/Qwen3-TTS-12Hz-1.7B-Base", "speaker_repo": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice", "langs": QWEN_LANGS, "python": "3.12",
         "title": "Qwen3-TTS 1.7B",
-        "note": "best quality, speakers and cloning; 10 languages; wants an NVIDIA GPU with 8+ GB (Mac: untested)",
-    },
-    "qwen3-tts-0.6b": {
-        "backend": "qwen", "repo": "Qwen/Qwen3-TTS-12Hz-0.6B-Base", "speaker_repo": "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice", "langs": QWEN_LANGS, "python": "3.12",
-        "title": "Qwen3-TTS 0.6B",
-        "note": "same family, smaller and faster; speakers and cloning; for smaller GPUs and trying things out",
+        "note": "the largest Qwen3-TTS model: built-in speakers and cloning, 10 languages; needs a GPU (NVIDIA 8+ GB or an Apple Silicon Mac)",
     },
 }
 # Built-in speakers of the Qwen3-TTS CustomVoice models. Each is native in one language and speaks the others with an accent.
@@ -92,9 +87,8 @@ def describe(hw):
 
 
 def recommend(lang, hw):
-    """The model to suggest for this language and hardware. `lang` may be 'auto'."""
-    big = (hw["kind"] == "cuda" and hw["mem_gb"] >= 8) or (hw["kind"] == "mps" and hw["mem_gb"] >= 16)
-    return "qwen3-tts-1.7b" if big else "qwen3-tts-0.6b"
+    """The model to use for this language and hardware. `lang` may be 'auto'."""
+    return "qwen3-tts-1.7b"
 
 
 def supports(model, lang):
@@ -290,17 +284,8 @@ def headless(a, hw):
 # ---------- guided mode ----------
 
 def pick_model(lang, hw, speaker_mode):
-    """Show the models that fit and let the user choose; Enter takes the recommendation."""
-    options = [m for m in MODELS if supports(m, lang)]
-    rec = recommend(lang, hw)
-    if rec not in options:
-        rec = options[0]
-    say(f"\nPick a model for {LANG_NAMES.get(lang, lang)}:")
-    for i, m in enumerate(options, 1):
-        say(f"   {i}. {MODELS[m]['title']}{'   <- recommended for your computer' if m == rec else ''}\n      {MODELS[m]['note']}")
-    pick = ask("   Number", str(options.index(rec) + 1))
-    model = options[int(pick) - 1] if pick.isdigit() and 1 <= int(pick) <= len(options) else rec
-    say(f"   -> {MODELS[model]['title']}")
+    model = recommend(lang, hw)
+    say(f"\nModel: {MODELS[model]['title']} ({MODELS[model]['note']})")
     return model
 
 
@@ -403,8 +388,6 @@ def serve(a, hw):
         env["VOICE_DIR"] = str(pathlib.Path(a.voices_dir).resolve())
     if a.offline:
         env["VOICE_OFFLINE"] = "1"
-    if a.size:
-        env["VOICE_MODEL_SIZE"] = a.size
     if a.whisper:
         env["VOICE_WHISPER"] = a.whisper
     cmd = [str(env_python("qwen")), str(SRC / "server.py"), "--host", a.host, "--port", str(a.port)]
@@ -449,7 +432,6 @@ def main():
     ap.add_argument("--host", default="127.0.0.1", help="with --serve: address to listen on (0.0.0.0 = reachable from other computers)")
     ap.add_argument("--port", type=int, default=8190, help="with --serve: port (default 8190)")
     ap.add_argument("--voices-dir", help="with --serve: folder with the saved voices (default: voices/); use an existing folder to keep your voices")
-    ap.add_argument("--size", choices=["1.7B", "0.6B"], help="with --serve: model size (default 1.7B; 0.6B for smaller GPUs and Macs)")
     ap.add_argument("--whisper", help="with --serve: Whisper model for transcripts (default large-v3-turbo; \"small\" is a much smaller download)")
     ap.add_argument("--offline", action="store_true", help="with --serve: never contact Hugging Face (models must already be downloaded)")
     ap.add_argument("--list-models", action="store_true")
