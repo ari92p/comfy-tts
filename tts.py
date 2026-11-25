@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """easy-tts: text to speech on your own computer, with voice cloning from a short recording.
 
-  python3 tts.py                                    guided mode: asks a few questions, helps you pick a model
-  python3 tts.py --clone me.wav --text "Hello!"     clone your voice from a recording (writes out/me-<time>.wav)
-  python3 tts.py --voice me --text "Hello again!"   use a voice you saved earlier
+  tts                                  first start: a short setup (language, your voice); afterwards it asks for a text and speaks it
+  tts "Hello!"                         speak a text with your voice        (also: echo "Hello!" | tts)
+  tts --configure                      change the language or the voice
+  tts --clone me.wav --text "Hello!"   clone a voice from a recording (add --save-voice NAME to keep it)
 
 Run with --help for all options. This file only needs a plain Python 3.9+; the models run in private virtualenvs
 (.venvs/) that are created for you on first use, see README.md.
 """
 import argparse
 import datetime
+import json
 import os
 import pathlib
 import platform
@@ -25,6 +27,8 @@ SRC = ROOT / "src"
 VENVS = ROOT / ".venvs"
 VOICES = ROOT / "voices"
 OUT = ROOT / "out"
+CONFIG = ROOT / "config.json"   # your language and voice, written by the first-start setup
+VERBOSE = False
 IS_WIN = os.name == "nt"
 
 # Everything the launcher knows about the models. `langs` are ISO codes. `python` is the interpreter uv fetches for the venv.
@@ -106,6 +110,16 @@ def run(cmd, **kw):
     return subprocess.run(cmd, **kw)
 
 
+def quiet_run(cmd):
+    """Run a setup command without its chatter (everything with -v); on failure show what it printed."""
+    if VERBOSE:
+        run(cmd, check=True)
+        return
+    r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
+    if r.returncode:
+        die("setup failed:\n" + "\n".join(r.stdout.strip().splitlines()[-25:]))
+
+
 def ensure_env(model, hw, assume_yes):
     """Create the private virtualenv for this model's backend on first use."""
     backend = MODELS[model]["backend"]
@@ -117,34 +131,36 @@ def ensure_env(model, hw, assume_yes):
             "  macOS/Linux: curl -LsSf https://astral.sh/uv/install.sh | sh      (or: brew install uv)\n"
             "  Windows:     powershell -c \"irm https://astral.sh/uv/install.ps1 | iex\"\n"
             "Then run this command again.")
-    say(f"\nFirst use of {MODELS[model]['title']}: setting up a private Python environment in .venvs/{backend}")
-    say("This downloads PyTorch and the model libraries (several GB) and takes a few minutes. It happens once.")
-    if not assume_yes and sys.stdin.isatty():
-        if ask("Go ahead?", "y").lower() not in ("y", "yes", "j", "ja"):
-            die("cancelled")
+    say("Setting up (first time only, a few minutes)...")
     venv = VENVS / backend
     if venv.exists():
         shutil.rmtree(venv)     # a half-finished earlier attempt
     py = str(env_python(backend))
-    run([uv, "venv", "--python", MODELS[model]["python"], str(venv)], check=True)
+    quiet_run([uv, "venv", "--python", MODELS[model]["python"], str(venv)])
     reqs = ["-r", str(ROOT / "requirements" / f"{backend}.txt")]
     nvidia = hw["kind"] == "cuda"
     if backend == "qwen" and nvidia and IS_WIN:
         # on Windows the default PyPI torch is CPU-only
-        run([uv, "pip", "install", "--python", py, "torch", "torchaudio", "--index-url", "https://download.pytorch.org/whl/cu128"], check=True)
-    run([uv, "pip", "install", "--python", py] + reqs, check=True)
+        quiet_run([uv, "pip", "install", "--python", py, "torch", "torchaudio", "--index-url", "https://download.pytorch.org/whl/cu128"])
+    quiet_run([uv, "pip", "install", "--python", py] + reqs)
     (venv / ".tts-ready").write_text("ok\n")
-    say("Environment ready.\n")
 
 
-def engine(model, args):
-    """Run engine.py in the model's virtualenv and stream its output."""
+def engine(model, args, quiet=True):
+    """Run engine.py in the model's virtualenv. Quiet unless -v or a model has to be downloaded (then its progress bars show)."""
     env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8", PYTORCH_ENABLE_MPS_FALLBACK="1",
                TOKENIZERS_PARALLELISM="false")
     cmd = [str(env_python(MODELS[model]["backend"])), str(SRC / "engine.py")] + args
-    r = run(cmd, env=env)
+    if VERBOSE or not quiet:
+        r = run(cmd, env=env)
+        if r.returncode:
+            sys.exit(r.returncode)
+        return
+    w = Working("Working...")
+    r = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
+    w.done()
     if r.returncode:
-        sys.exit(r.returncode)
+        die("the voice engine failed:\n" + "\n".join(r.stdout.strip().splitlines()[-25:]))
 
 
 # ---------- small helpers ----------
@@ -187,11 +203,49 @@ def launcher():
 
 
 def rel(p):
-    """Show paths relative to the current directory where that is shorter."""
+    """A path relative to the current folder when it lies inside it, otherwise the full path."""
+    p = pathlib.Path(p).resolve()
     try:
-        return os.path.relpath(p)
+        return str(p.relative_to(pathlib.Path.cwd()))
     except ValueError:
         return str(p)
+
+
+def load_config():
+    try:
+        return json.loads(CONFIG.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def save_config(cfg):
+    CONFIG.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+
+
+def hf_cache():
+    return pathlib.Path(os.environ.get("HF_HUB_CACHE") or (pathlib.Path(os.environ.get("HF_HOME") or "~/.cache/huggingface").expanduser() / "hub"))
+
+
+def cached(repo, key_file):
+    """Is this Hugging Face model already on disk? (decides whether a download progress bar is worth showing)"""
+    snaps = hf_cache() / ("models--" + repo.replace("/", "--")) / "snapshots"
+    return snaps.is_dir() and any((d / key_file).exists() for d in snaps.iterdir())
+
+
+class Working:
+    """A one-line 'working...' note that disappears when done (only on a terminal)."""
+
+    def __init__(self, text):
+        self.on = sys.stdout.isatty() and not VERBOSE
+        if self.on:
+            sys.stdout.write(text + "\r")
+            sys.stdout.flush()
+        self.n = len(text)
+
+    def done(self):
+        if self.on:
+            sys.stdout.write(" " * self.n + "\r")
+            sys.stdout.flush()
 
 
 # ---------- the actual work ----------
@@ -200,7 +254,10 @@ def prepare_voice(model, voice_dir, ref, ref_text, lang):
     args = ["prepare", "--ref", ref, "--voice-dir", str(voice_dir), "--lang", lang]
     if ref_text:
         args += ["--ref-text", ref_text]
-    engine(model, args)
+    quiet = cached("Systran/faster-whisper-small", "model.bin") or bool(ref_text)
+    if not quiet:
+        say("Downloading the speech recognition model (about 0.5 GB, first time only)...")
+    engine(model, args, quiet)
 
 
 def speak(model, voice_dir, text, out, lang, seed, device):
@@ -212,7 +269,10 @@ def speak(model, voice_dir, text, out, lang, seed, device):
         args += ["--model", MODELS[model]["repo"], "--voice-dir", str(voice_dir)]
         if seed is not None:
             args += ["--seed", str(seed)]
-        engine(model, args)
+        quiet = cached(MODELS[model]["repo"], "model.safetensors")
+        if not quiet:
+            say("Downloading the voice model (about 4 GB, first time only)...")
+        engine(model, args, quiet)
     finally:
         os.unlink(tmp)
 
@@ -234,105 +294,77 @@ def finish_output(wav, out):
         wav.unlink()
 
 
-# ---------- headless ----------
+# ---------- one clip ----------
 
-def headless(a, hw):
-    lang = a.lang.lower()
+def read_text_file(path):
+    return pathlib.Path(clean_path(path)).read_text(encoding="utf-8")
+
+
+def make_clip(a, hw, text, lang, voice="", clone=""):
+    """Speak `text` with a saved voice or a recording, write the file, print where it is."""
     model = a.model if a.model != "auto" else recommend(lang, hw)
     if not supports(model, lang):
-        die(f"{MODELS[model]['title']} does not support '{lang}'. Try --model auto, or see: python3 tts.py --list-models")
-    text = a.text if a.text is not None else pathlib.Path(clean_path(a.text_file)).read_text(encoding="utf-8")
+        die(f"'{lang}' is not supported. Supported languages: {', '.join(QWEN_LANGS)}")
     if not text.strip():
         die("the text is empty")
     ref = ""
-    if a.voice:
-        voice_dir = VOICES / voice_name(a.voice)
+    if voice:
+        voice_dir = VOICES / voice_name(voice)
         if not (voice_dir / "ref.wav").exists():
-            die(f"no saved voice called '{a.voice}'. Saved voices: {', '.join(saved_voices()) or 'none yet'}")
-        label = voice_name(a.voice)
+            die(f"no saved voice called '{voice}'. Saved voices: {', '.join(saved_voices()) or 'none yet'}")
+        label = voice_name(voice)
     else:
-        ref = clean_path(a.clone)
+        ref = clean_path(clone)
         if not os.path.isfile(ref):
-            die(f"reference file not found: {ref}")
+            die(f"recording not found: {ref}")
         label = voice_name(a.save_voice) if a.save_voice else "_last"
         voice_dir = VOICES / label
     out = pathlib.Path(a.out) if a.out else OUT / f"{label.strip('_') or 'voice'}-{datetime.datetime.now():%Y%m%d-%H%M%S}.wav"
     wav, out = final_output(out, model)
-    say(f"Model: {MODELS[model]['title']}   Language: {LANG_NAMES.get(lang, lang)}   Device: {describe(hw)}")
-    ensure_env(model, hw, a.yes or not sys.stdin.isatty())
+    ensure_env(model, hw, True)
     if ref:
         prepare_voice(model, voice_dir, ref, a.clone_text, lang)
     speak(model, voice_dir, text, wav, lang, a.seed, a.device)
     finish_output(wav, out)
-    say(f"\nSaved: {out}")
+    say(f"Saved: {rel(out)}")
 
 
-# ---------- guided mode ----------
+# ---------- first-start setup ----------
 
-def guided(hw):
-    say("\n=== guided mode ===")
-    say("I'll ask a few questions, set things up and clone your voice for a first clip.")
-    say("At the end I print the one-line command that does the same without questions.\n")
-    say(f"Your computer: {describe(hw)}\n")
-
-    lang = ask("1) Which language will the spoken text be in? (code, e.g. en, de, fr, es)", "en").lower()
-    if lang not in QWEN_LANGS:
-        say(f"   '{lang}' is not supported here. Supported: {', '.join(QWEN_LANGS)}")
-        lang = "en"
-    model = recommend(lang, hw)
-
-    voice, ref, label = "", "", ""
+def configure(hw, first):
+    """Ask for the language and the voice, prepare the voice, remember both in config.json."""
+    cfg = load_config()
+    say("\nInitial configuration" if first else "\nConfiguration")
+    lang = ask(f"Language of your texts ({', '.join(QWEN_LANGS)})", cfg.get("lang", "en")).lower()
+    while lang not in QWEN_LANGS:
+        lang = ask("Not supported. Please pick one of the list", "en").lower()
+    voice, ref = "", ""
     voices = saved_voices()
     if voices:
-        say(f"\n2) Saved voices: {', '.join(voices)}")
-        voice = ask("   Type one of these names to reuse it, or press Enter to use a new recording", "")
-        voice = voice_name(voice) if voice_name(voice) in voices else ""
+        v = voice_name(ask(f"Use a saved voice? ({', '.join(voices)}) Name, or Enter for a new recording", ""))
+        voice = v if v in voices else ""
     if not voice:
-        say("\n2) Your recording: 5 to 15 seconds of one person speaking clearly, no music or background noise.")
-        say("   Any audio file works (wav, mp3, m4a, ...). Drag the file into this window or type its path.")
+        say("Recording of the voice: 5 to 15 seconds of one person speaking clearly. Drag the file here.")
         while True:
-            ref = clean_path(ask("   File:"))
+            ref = clean_path(ask("File:"))
             if os.path.isfile(ref):
                 break
-            say("   I can't find that file, try again.")
-        label = voice_name(ask("   Save this voice under a name so you can reuse it? (name, or Enter to skip)", ""))
-    voice_dir = VOICES / (voice or label or "_last")
-
-    ensure_env(model, hw, False)
-
+            say("File not found, try again.")
+        default = voice_name(pathlib.Path(ref).stem) or "voice"
+        voice = voice_name(ask("Name for this voice", default)) or default
+    model = recommend(lang, hw)
+    ensure_env(model, hw, True)
     if ref:
-        say("\nPreparing the recording...")
-        prepare_voice(model, voice_dir, ref, "", lang)
-        txt = voice_dir / "ref.txt"
+        prepare_voice(model, VOICES / voice, ref, "", lang)
+        txt = VOICES / voice / "ref.txt"
         if txt.exists():
-            heard = txt.read_text(encoding="utf-8").strip()
-            say(f"\nI heard this in your recording:\n   \"{heard}\"")
-            fix = ask("   Correct? Press Enter, or type the right text (it clones better when the transcript is exact):", "")
+            say(f"I heard: \"{txt.read_text(encoding='utf-8').strip()}\"")
+            fix = ask("Correct? Press Enter, or type the right text (an exact transcript clones better):", "")
             if fix:
                 txt.write_text(fix + "\n", encoding="utf-8")
-
-    say("\n3) What should it say? Type a sentence, or give the path of a .txt file.")
-    t = ask("   Text:")
-    while not t:
-        t = ask("   Text:")
-    cand = clean_path(t)
-    text = pathlib.Path(cand).read_text(encoding="utf-8") if t.lower().endswith(".txt") and os.path.isfile(cand) else t
-    base = voice or label or "voice"
-    default_out = rel(OUT / f"{base}-{datetime.datetime.now():%Y%m%d-%H%M%S}.wav")
-    out = pathlib.Path(clean_path(ask("4) Where should the audio go?", default_out)))
-
-    argv = [launcher(), "tts.py"]
-    argv += ["--voice", voice or label] if (voice or label) else ["--clone", ref]
-    argv += ["--text", text] if len(text) <= 200 else ["--text-file", "my-text.txt"]
-    argv += ["--lang", lang, "-o", rel(out)]
-    say("\nNext time, this one command does everything above without questions:")
-    say(f"\n   {shell_join(argv)}\n")
-
-    wav, final = final_output(out, model)
-    speak(model, voice_dir, text, wav, lang, None, "auto")
-    finish_output(wav, final)
-    say(f"\nSaved: {final}")
-    say("If it doesn't sound right: try another --seed, or a cleaner or slightly longer recording.")
+    cfg.update(lang=lang, voice=voice)
+    save_config(cfg)
+    return cfg
 
 
 # ---------- server ----------
@@ -366,33 +398,40 @@ def serve(a, hw):
 # ---------- main ----------
 
 def main():
+    global VERBOSE
     ap = argparse.ArgumentParser(
-        description="easy-tts: text to speech on your own computer, with voice cloning from a short recording. No arguments = guided mode.",
-        epilog="Examples:  python3 tts.py --clone me.wav --save-voice me --text \"Hello world\" --lang en\n"
-               "          python3 tts.py --voice me --text \"Hello again\" --lang en",
+        description="easy-tts: text to speech on your own computer, with voice cloning from a short recording. "
+                    "First start: a short setup. Afterwards: tts \"your text\".",
+        epilog="Examples:  tts \"Hello world\"                      speak with your configured voice\n"
+               "          echo \"Hello world\" | tts                text from stdin\n"
+               "          tts --clone me.wav --save-voice me --text \"Hello world\" --lang en",
         formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("words", nargs="*", metavar="TEXT", help="what to say (or use --text, --text-file, or pipe it in)")
+    ap.add_argument("--configure", action="store_true", help="change the language or the voice you use")
     ap.add_argument("--clone", metavar="FILE", help="clone a voice from this recording: 5-15 s of one speaker (wav, mp3, m4a, ...)")
     ap.add_argument("--voice", help="use a voice saved earlier with --save-voice")
-    ap.add_argument("--save-voice", metavar="NAME", help="keep the prepared reference under this name for later (--voice NAME)")
+    ap.add_argument("--save-voice", metavar="NAME", help="keep the prepared recording under this name for later (--voice NAME)")
     ap.add_argument("--text", help="what to say")
     ap.add_argument("--text-file", help="read what to say from a text file")
     ap.add_argument("-o", "--out", help="output file (default: out/<voice>-<time>.wav; .mp3 works if ffmpeg is installed)")
-    ap.add_argument("--lang", default="auto", help="language of the text, e.g. en, de, fr (default: auto = let the model decide)")
-    ap.add_argument("--model", default="auto", choices=["auto"] + list(MODELS), help="default auto = best for your language and computer")
+    ap.add_argument("--lang", help="language of the text, e.g. en, de, fr (default: the one you configured)")
+    ap.add_argument("--model", default="auto", choices=["auto"] + list(MODELS), help=argparse.SUPPRESS)
     ap.add_argument("--clone-text", help="with --clone: the exact words spoken in the recording (default: Whisper listens for you)")
     ap.add_argument("--seed", type=int, help="same seed + same text = same result; change it for a different take")
     ap.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"])
-    ap.add_argument("-y", "--yes", action="store_true", help="set up the Python environment without asking")
-    ap.add_argument("--setup", nargs="?", const="auto", metavar="MODEL", help="only install the environment for MODEL, then exit")
-    ap.add_argument("--serve", action="store_true", help="run the HTTP voice service (what the Studio talks to) instead of generating once")
+    ap.add_argument("-v", "--verbose", action="store_true", help="show everything the setup and the voice engine print")
+    ap.add_argument("-y", "--yes", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--setup", nargs="?", const="auto", metavar="MODEL", help="only install the environment, then exit")
+    ap.add_argument("--serve", action="store_true", help="run the HTTP voice service instead of generating once")
     ap.add_argument("--host", default="127.0.0.1", help="with --serve: address to listen on (0.0.0.0 = reachable from other computers)")
     ap.add_argument("--port", type=int, default=8190, help="with --serve: port (default 8190)")
     ap.add_argument("--voices-dir", help="with --serve: folder with the saved voices (default: voices/); use an existing folder to keep your voices")
     ap.add_argument("--whisper", help="with --serve: Whisper model for transcripts (default large-v3-turbo; \"small\" is a much smaller download)")
     ap.add_argument("--offline", action="store_true", help="with --serve: never contact Hugging Face (models must already be downloaded)")
-    ap.add_argument("--list-models", action="store_true")
-    ap.add_argument("--list-voices", action="store_true")
+    ap.add_argument("--list-models", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--list-voices", action="store_true", help="show the voices you saved")
     a = ap.parse_args()
+    VERBOSE = a.verbose
 
     hw = detect_hardware()
     if a.list_models:
@@ -401,7 +440,7 @@ def main():
             say(f"{m}\n   {info['title']}: {info['note']}\n   languages: {', '.join(info['langs'])}")
         return
     if a.list_voices:
-        say("\n".join(saved_voices()) or "No saved voices yet. Create one with: --clone FILE --save-voice NAME")
+        say("\n".join(saved_voices()) or "No saved voices yet. Run tts once to set one up.")
         return
     banner()
     if a.serve:
@@ -412,16 +451,42 @@ def main():
             die(f"unknown model '{m}'. Choose from: {', '.join(MODELS)}")
         ensure_env(m, hw, True)
         return
-    if a.clone or a.voice or a.text or a.text_file:
-        if bool(a.clone) == bool(a.voice):
-            die("give exactly one of --clone FILE (clone a new recording) or --voice NAME (a voice saved earlier)")
-        if (a.text is None) == (a.text_file is None):
-            die("give exactly one of --text \"...\" or --text-file FILE")
-        return headless(a, hw)
-    if not sys.stdin.isatty():
-        ap.print_help()
+
+    cfg = load_config()
+    if a.clone and a.voice:
+        die("give either --clone FILE (a new recording) or --voice NAME (a voice saved earlier), not both")
+    if sum(x is not None and x != [] for x in (a.text, a.words or None, a.text_file)) > 1:
+        die("give the text once: as an argument, with --text, or with --text-file")
+    if a.configure:
+        if not sys.stdin.isatty():
+            die("--configure needs a terminal")
+        configure(hw, first=not cfg.get("voice"))
+        say("Saved. Now: tts \"your text\"")
         return
-    guided(hw)
+
+    voice, clone = a.voice or "", a.clone or ""
+    lang = (a.lang or cfg.get("lang") or "auto").lower()
+    if not voice and not clone:
+        voice = cfg.get("voice", "")
+        if not voice:                       # first start
+            if not sys.stdin.isatty():
+                die("not set up yet: run tts once in a terminal (or use --clone FILE)")
+            cfg = configure(hw, first=True)
+            voice, lang = cfg["voice"], (a.lang or cfg["lang"]).lower()
+    if a.text is not None:
+        text = a.text
+    elif a.words:
+        text = " ".join(a.words)
+    elif a.text_file:
+        text = read_text_file(a.text_file)
+    elif not sys.stdin.isatty():
+        text = sys.stdin.read()
+    else:
+        t = ""
+        while not t:
+            t = ask("Text:")
+        text = read_text_file(t) if t.lower().endswith(".txt") and os.path.isfile(clean_path(t)) else t
+    make_clip(a, hw, text, lang, voice, clone)
 
 
 if __name__ == "__main__":

@@ -10,45 +10,47 @@ git clone https://github.com/ari92p/easy-tts && cd easy-tts
 python3 tts.py
 ```
 
-The guided mode asks a few questions, sets everything up, clones your voice for a first clip and prints the one-line command that repeats it.
-On Windows use `python` instead of `python3`.
+The first start asks for your language and a recording of the voice you want (5 to 15 seconds, one person), sets everything up and
+remembers both. From then on:
+
+```bash
+python3 tts.py "Hello, this is my cloned voice."     # or just: python3 tts.py   and type the text
+echo "Hello from a pipe" | python3 tts.py
+```
+
+The result is written to `out/`. On Windows use `python` instead of `python3`. Want a plain `tts` command? On Mac and Linux:
+`chmod +x tts.py && ln -s "$PWD/tts.py" ~/.local/bin/tts`.
 
 You need Python 3.9+, [`uv`](https://docs.astral.sh/uv/) (`brew install uv`, or `curl -LsSf https://astral.sh/uv/install.sh | sh`,
 on Windows `irm https://astral.sh/uv/install.ps1 | iex`) and a GPU: an NVIDIA card or a Mac with Apple Silicon.
-The first run downloads PyTorch and the model (about 4 GB for the model), once.
+The first start downloads PyTorch and the model (about 4 GB for the model), once.
 
 ## Run it as command
 
-Choose exactly one voice:
-
-| You type | What it means | Recording needed? |
-| --- | --- | --- |
-| `--clone me.wav` | clone a new voice from your recording | yes, once |
-| `--voice me` | a cloned voice you saved earlier | no |
-
 ```bash
-# clone a voice from a recording and keep it for later
-python3 tts.py --clone me.wav --save-voice me --text "Hello, this is my cloned voice." --lang en
-
-# use the saved voice any time
-python3 tts.py --voice me --text "Any later line" --lang en
-
-# a long text from a file, to a file
-python3 tts.py --voice me --text-file chapter1.txt --lang en -o chapter1.wav
+tts "Any text"                                  # your configured voice and language
+tts --configure                                 # change the language or the voice
+tts --clone me.wav --save-voice me "Hello"      # clone another voice from a recording and keep it as "me"
+tts --voice me "Hello again" -o hello.wav       # use a saved voice, choose the file
+tts --text-file chapter1.txt -o chapter1.wav    # a long text from a file
 ```
 
 Results go to `out/` (or where `-o` says). Long texts are spoken sentence by sentence and joined.
 
 | Option | What it does |
 | --- | --- |
-| `--text "..."` / `--text-file FILE` | what to say |
-| `--lang de` | language of the text: en de fr es it pt ru zh ja ko (default `auto`) |
-| `--save-voice NAME` | with `--clone`: keep the voice for `--voice NAME` |
+| `--configure` | set the language and the voice again |
+| `--clone FILE` | clone a voice from this recording (wav, mp3, m4a, ...) |
+| `--voice NAME` / `--save-voice NAME` | use / keep a cloned voice |
+| `--text "..."`, `--text-file FILE`, or the text as an argument | what to say |
+| `--lang de` | language of the text: en de fr es it pt ru zh ja ko (default: the one you configured) |
 | `--clone-text "..."` | with `--clone`: the exact words of your recording (otherwise Whisper listens for you) |
 | `--seed N` | same seed and text give the same result; change it for another take |
 | `-o FILE` | output file (`.mp3` and others work if ffmpeg is installed) |
 | `--list-voices` | show the voices you saved |
-| `-y` | set up the Python environment without asking |
+| `-v` | show everything the setup and the voice engine print |
+
+Your choices are kept in `config.json` next to `tts.py` (not part of the repository).
 
 ## Run it as service
 
