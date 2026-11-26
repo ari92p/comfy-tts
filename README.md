@@ -75,7 +75,7 @@ easy-tts --serve --host 0.0.0.0       # reachable from other computers (no login
 A small HTTP service for other programs: saved voices with several samples, Whisper transcripts, `POST /generate`.
 The endpoints are listed at the top of [src/server.py](src/server.py). On start it downloads missing models (about 5.7 GB, with progress bars),
 then answers one job at a time, frees the GPU after 5 minutes without requests and restarts itself if a job hangs.
-Options: `--port`, `--voices-dir FOLDER`, `--offline` (never contact Hugging Face).
+Options: `--port`, `--voices-dir FOLDER`. Models that are already downloaded are used without asking the internet.
 
 ### Start files
 
@@ -90,7 +90,7 @@ Options: `--port`, `--voices-dir FOLDER`, `--offline` (never contact Hugging Fac
 - Close the window or press `Ctrl+C` to stop it. If the service stops by itself (for example a job hangs), it starts again after 5 seconds.
 - They listen on **all network interfaces** (`0.0.0.0`) so other computers can reach port 8190. There is no login, so only do that in a network you trust,
   or change `--host 0.0.0.0` to `--host 127.0.0.1` in the file to keep it on your own computer.
-- Edit the last line of the file to change the port or `--voices-dir`, or to add `--offline`.
+- Edit the last line of the file to change the port or `--voices-dir`.
 - To start it with the computer, run the file from Windows Task Scheduler (trigger: at log on) or from the login items of your system.
 
 ## Languages

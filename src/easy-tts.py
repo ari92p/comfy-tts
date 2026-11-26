@@ -425,8 +425,6 @@ def serve(a, hw):
     env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8", PYTORCH_ENABLE_MPS_FALLBACK="1", TOKENIZERS_PARALLELISM="false")
     if a.voices_dir:
         env["VOICE_DIR"] = str(pathlib.Path(a.voices_dir).resolve())
-    if a.offline:
-        env["VOICE_OFFLINE"] = "1"
     cmd = [str(env_python("qwen")), str(SRC / "server.py"), "--host", a.host, "--port", str(a.port)]
     say(f"easy-tts service on http://{a.host}:{a.port}  (Ctrl+C stops it)")
     while True:
@@ -471,7 +469,6 @@ def main():
     ap.add_argument("--host", default="127.0.0.1", help="with --serve: address to listen on (0.0.0.0 = reachable from other computers)")
     ap.add_argument("--port", type=int, default=8190, help="with --serve: port (default 8190)")
     ap.add_argument("--voices-dir", help="with --serve: folder with the saved voices (default: voices/); use an existing folder to keep your voices")
-    ap.add_argument("--offline", action="store_true", help="with --serve: never contact Hugging Face (models must already be downloaded)")
     ap.add_argument("--list-models", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--transcribe", metavar="AUDIO", help="voice to text: write what is said in an audio file to out/<name>-<time>.txt (add --lang if you know it, -o to choose the file)")
     ap.add_argument("--list-voices", action="store_true", help="show the voices you saved")

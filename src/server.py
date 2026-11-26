@@ -36,9 +36,7 @@ import time
 from typing import Optional
 
 # Environment (all optional): VOICE_DIR = where saved voices live (default: voices/ in the repository root; point it at an existing
-# folder to keep your voices), HF_HOME = Hugging Face cache, VOICE_OFFLINE=1 = never talk to the Hub (models must be cached).
-if os.environ.get("VOICE_OFFLINE") == "1":
-    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+# folder to keep your voices), HF_HOME = Hugging Face cache.
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
 import numpy as np  # noqa: E402
@@ -88,21 +86,17 @@ def device_and_dtype():
 
 
 def fetch(repo):
-    """Local snapshot path of a model: from the cache if it is there, otherwise downloaded once (unless VOICE_OFFLINE=1)."""
+    """Local snapshot path of a model: from the cache if it is there, otherwise downloaded once."""
     try:
         return snapshot_download(repo, local_files_only=True)
     except Exception:
-        if os.environ.get("HF_HUB_OFFLINE") == "1":
-            raise
         log(f"downloading {repo} (first use)")
         return snapshot_download(repo)
 
 
 def prefetch():
     """Make sure all models are on disk before the service starts listening. A download inside the first request would give
-    no feedback and the watchdog (HARD_SECONDS) would end a slow download half way. Already cached models cost nothing."""
-    if os.environ.get("HF_HUB_OFFLINE") == "1":
-        return
+    no feedback and the watchdog (HARD_SECONDS) would end a slow download half way. Models that are already cached are used as they are: nothing is asked from the Hub."""
     log("checking models (the first start downloads about 4.7 GB, once; the progress bars below show it)")
     for kind in ("clone",):
         try:
@@ -111,7 +105,11 @@ def prefetch():
             log(f"could not download {MODELS[kind]}: {e!r}. It will be tried again on the first request.")
     try:
         from faster_whisper.utils import download_model
-        download_model(WHISPER)
+        try:
+            download_model(WHISPER, local_files_only=True)
+        except Exception:  # noqa: BLE001
+            log(f"downloading {WHISPER} (first use)")
+            download_model(WHISPER)
     except Exception as e:  # noqa: BLE001
         log(f"could not download the Whisper model {WHISPER}: {e!r}")
     log("models ready")
