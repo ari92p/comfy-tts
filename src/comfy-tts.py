@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""easy-tts: text to speech on your own computer, with voice cloning from a short recording.
+"""comfy-tts: text to speech on your own computer, with voice cloning from a short recording.
 
-  easy-tts                                    guided: asks for the voice, the language (new voices) and the text
-  easy-tts --voice me "Hello!"                one command with a saved voice (it remembers its language; also: echo "Hello!" | easy-tts --voice me)
-  easy-tts --clone me.wav --save me --lang en "Hello!"    clone a voice from a recording and keep it (with its language)
+  comfy-tts                                    guided: asks for the voice, the language (new voices) and the text
+  comfy-tts --voice me "Hello!"                one command with a saved voice (it remembers its language; also: echo "Hello!" | comfy-tts --voice me)
+  comfy-tts --clone me.wav --save me --lang en "Hello!"    clone a voice from a recording and keep it (with its language)
 
 Run with --help for all options. This file only needs a plain Python 3.9+; the models run in private virtualenvs
 (.venvs/) that are created for you on first use, see README.md.
@@ -44,7 +44,7 @@ LANG_NAMES = {"en": "English", "de": "German", "fr": "French", "es": "Spanish", 
 
 def banner():
     bold = sys.stdout.isatty() and not os.environ.get("NO_COLOR") and os.environ.get("TERM") != "dumb"
-    say("\033[1m# easy-tts\033[0m" if bold else "# easy-tts")
+    say("\033[1m# comfy-tts\033[0m" if bold else "# comfy-tts")
 
 
 def say(*a):
@@ -52,7 +52,7 @@ def say(*a):
 
 
 def status(msg):
-    say("#easy-tts: " + msg)
+    say("#comfy-tts: " + msg)
 
 
 def die(msg):
@@ -129,7 +129,7 @@ def engine(model, args, quiet=True):
         if r.returncode:
             sys.exit(r.returncode)
         return
-    w = Working("#easy-tts: Working...")
+    w = Working("#comfy-tts: Working...")
     r = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
     w.done()
     if r.returncode:
@@ -323,7 +323,7 @@ def save_voice_only(a, hw, lang):
     ensure_env(model, hw, True)
     prepare_voice(model, VOICES / name, ref, lang)
     set_voice_lang(VOICES / name, lang)
-    status(f"Voice saved: {name} ({lang}). Use it: easy-tts --voice {name} \"your text\"")
+    status(f"Voice saved: {name} ({lang}). Use it: comfy-tts --voice {name} \"your text\"")
 
 
 def make_clip(a, hw, text, lang, voice="", clone=""):
@@ -426,7 +426,7 @@ def serve(a, hw):
     if a.voices_dir:
         env["VOICE_DIR"] = str(pathlib.Path(a.voices_dir).resolve())
     cmd = [str(env_python("qwen")), str(SRC / "server.py"), "--host", a.host, "--port", str(a.port)]
-    say(f"easy-tts service on http://{a.host}:{a.port}  (Ctrl+C stops it)")
+    say(f"comfy-tts service on http://{a.host}:{a.port}  (Ctrl+C stops it)")
     while True:
         try:
             code = run(cmd, env=env).returncode
@@ -443,13 +443,13 @@ def serve(a, hw):
 # ---------- main ----------
 
 def main():
-    ap = argparse.ArgumentParser(prog="easy-tts",
-        description="easy-tts: text to speech on your own computer, with voice cloning from a short recording. "
-                    "Run just `easy-tts` to be guided; with arguments give the voice and the language.",
-        epilog="Examples:  easy-tts                                     guided\n"
-               "          easy-tts --voice me \"Hello world\"               one command\n"
-               "          echo \"Hello\" | easy-tts --voice me             text from stdin\n"
-               "          easy-tts --clone me.wav --save me --lang en \"Hello\"",
+    ap = argparse.ArgumentParser(prog="comfy-tts",
+        description="comfy-tts: text to speech on your own computer, with voice cloning from a short recording. "
+                    "Run just `comfy-tts` to be guided; with arguments give the voice and the language.",
+        epilog="Examples:  comfy-tts                                     guided\n"
+               "          comfy-tts --voice me \"Hello world\"               one command\n"
+               "          echo \"Hello\" | comfy-tts --voice me             text from stdin\n"
+               "          comfy-tts --clone me.wav --save me --lang en \"Hello\"",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("words", nargs="*", metavar="TEXT", help="what to say (or use --text, --text-file, or pipe it in)")
     ap.add_argument("--clone", metavar="FILE", help="clone a voice from this recording: 5-15 s of one speaker (wav, mp3, m4a, ...)")
@@ -488,7 +488,7 @@ def main():
             say(f"{m}\n   {info['title']}: {info['note']}\n   languages: {', '.join(info['langs'])}")
         return
     if a.list_voices:
-        say("\n".join(f"{v:<22}{voice_lang(d)}" for v, d in voice_dirs().items()) or "No saved voices yet. Run easy-tts to record one.")
+        say("\n".join(f"{v:<22}{voice_lang(d)}" for v, d in voice_dirs().items()) or "No saved voices yet. Run comfy-tts to record one.")
         return
     if a.transcribe:
         return transcribe_audio(a, hw)
@@ -502,13 +502,13 @@ def main():
     if sum(x is not None and x != [] for x in (a.text, a.words or None, a.text_file)) > 1:
         die("give the text once: as an argument, with --text, or with --text-file")
 
-    if not (a.words or a.text is not None or a.text_file or a.voice or a.clone or a.lang):   # plain `easy-tts`: be guided
+    if not (a.words or a.text is not None or a.text_file or a.voice or a.clone or a.lang):   # plain `comfy-tts`: be guided
         if not sys.stdin.isatty():
             ap.print_help()
             return
         lang, voice, text = dialog(hw)
         if not text:
-            return status(f"Voice saved: {voice} ({lang}). Use it: easy-tts --voice {voice} \"your text\"")
+            return status(f"Voice saved: {voice} ({lang}). Use it: comfy-tts --voice {voice} \"your text\"")
         return make_clip(a, hw, text, lang, voice, "")
 
     missing = []
@@ -523,7 +523,7 @@ def main():
     if (a.clone or not (a.voice or a.clone)) and not lang:
         missing.append(f"--lang ({', '.join(QWEN_LANGS)})")
     if missing:
-        die("missing " + " and ".join(missing) + ".\nOr just run `easy-tts` and answer the questions.")
+        die("missing " + " and ".join(missing) + ".\nOr just run `comfy-tts` and answer the questions.")
     if a.clone and a.save and a.text is None and not a.words and not a.text_file:
         return save_voice_only(a, hw, lang)                # no text: only keep the voice
     if a.text is not None:

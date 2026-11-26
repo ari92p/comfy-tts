@@ -2,9 +2,9 @@
 # One-time setup for Mac and Linux. Needs nothing installed: it fetches uv, uv fetches Python and the packages.
 # Everything goes into .venvs/ in this folder. The models are downloaded on first use.
 cd "$(dirname "$0")/.." || exit 1
-say() { echo "#easy-tts: $*"; }
+say() { echo "#comfy-tts: $*"; }
 PY=.venvs/qwen/bin/python
-if [ -f .venvs/qwen/.tts-ready ]; then say "Already set up. Start it with: ./easy-tts"; exit 0; fi
+if [ -f .venvs/qwen/.tts-ready ]; then say "Already set up. Start it with: ./comfy-tts"; exit 0; fi
 
 UV=$(command -v uv)
 if [ -z "$UV" ]; then
@@ -20,4 +20,4 @@ rm -rf .venvs/qwen
 "$UV" venv --quiet --python 3.12 .venvs/qwen || exit 1
 "$UV" pip install --quiet --python "$PY" -r src/requirements.txt || exit 1
 touch .venvs/qwen/.tts-ready
-say "Done. Start it with: ./easy-tts"
+say "Done. Start it with: ./comfy-tts"

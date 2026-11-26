@@ -1,4 +1,4 @@
-# easy-tts
+# comfy-tts
 
 Text to speech with voice cloning, and voice to text, on your own computer.
 Give it a 10-second recording of a voice and let it say anything, or turn an audio file into text. No account, no API key, everything runs locally.
@@ -10,26 +10,26 @@ Give it a 10-second recording of a voice and let it say anything, or turn an aud
 ## Quick start
 
 ```bash
-git clone https://github.com/ari92p/easy-tts && cd easy-tts
+git clone https://github.com/ari92p/comfy-tts && cd comfy-tts
 src/setup.sh     # once (Windows: double-click src\setup.cmd)
-./easy-tts           # Windows: easy-tts.cmd
+./comfy-tts           # Windows: comfy-tts.cmd
 ```
 
 ## Run it as command
 
 ```bash
-easy-tts --clone me.wav --save me --lang en "Hello, this is my voice."    # clone a recording and keep it as "me" (with its language)
-easy-tts --clone me.wav --save me --lang en                                    # only keep the voice, no text: nothing is spoken
-easy-tts --voice me "Hello again."                                             # use the saved voice, no --lang needed
-echo "Hello from a pipe" | easy-tts --voice me                                 # text from stdin
-easy-tts --voice me --text-file chapter1.txt -o chapter1.wav                   # a long text from a file
+comfy-tts --clone me.wav --save me --lang en "Hello, this is my voice."    # clone a recording and keep it as "me" (with its language)
+comfy-tts --clone me.wav --save me --lang en                                    # only keep the voice, no text: nothing is spoken
+comfy-tts --voice me "Hello again."                                             # use the saved voice, no --lang needed
+echo "Hello from a pipe" | comfy-tts --voice me                                 # text from stdin
+comfy-tts --voice me --text-file chapter1.txt -o chapter1.wav                   # a long text from a file
 ```
 
 ## Run it as service
 
 ```bash
-easy-tts --serve                      # http://127.0.0.1:8190
-easy-tts --serve --host 0.0.0.0       # reachable from other computers (no login, use a firewall)
+comfy-tts --serve                      # http://127.0.0.1:8190
+comfy-tts --serve --host 0.0.0.0       # reachable from other computers (no login, use a firewall)
 ```
 
 Or start it with a file, which keeps it running (restarts it if it ends) and listens on port 8190 for other computers:
@@ -38,9 +38,9 @@ Windows: double-click `src\start_server.cmd`. Mac/Linux: `src/start_server.sh`.
 ## Voice to text
 
 ```bash
-easy-tts --transcribe interview.mp3                # writes out/interview-<time>.txt
-easy-tts --transcribe interview.mp3 --lang de      # if you know the language (otherwise it is detected)
-easy-tts --transcribe interview.mp3 -o notes.txt   # choose the file
+comfy-tts --transcribe interview.mp3                # writes out/interview-<time>.txt
+comfy-tts --transcribe interview.mp3 --lang de      # if you know the language (otherwise it is detected)
+comfy-tts --transcribe interview.mp3 -o notes.txt   # choose the file
 ```
 
 Results go to `out/` (or where `-o` says).

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The part of tts that runs inside a model's virtualenv. You normally don't call this directly, use easy-tts.
+"""The part of tts that runs inside a model's virtualenv. You normally don't call this directly, use comfy-tts.
 
   engine.py prepare --ref FILE --voice-dir DIR [--ref-text T] [--lang de]
       Turns any audio file into a clean 24 kHz mono reference (<= 15 s) in DIR/ref.wav and writes the
@@ -297,7 +297,7 @@ def speak(a):
     import soundfile as sf
     voice_dir = pathlib.Path(a.voice_dir) if a.voice_dir else None
     if not (voice_dir and (voice_dir / "ref.wav").exists()):
-        die(f"{voice_dir}/ref.wav is missing. Run prepare first (easy-tts does this for you).")
+        die(f"{voice_dir}/ref.wav is missing. Run prepare first (comfy-tts does this for you).")
     text = pathlib.Path(a.text_file).read_text(encoding="utf-8").strip()
     if not text:
         die("the text is empty")
