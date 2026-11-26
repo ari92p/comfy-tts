@@ -251,7 +251,7 @@ def prepare_voice(model, voice_dir, ref, lang):
     engine(model, args, quiet)
 
 
-def speak(model, voice_dir, text, out, lang, seed, device, fast=False, speed=1.0):
+def speak(model, voice_dir, text, out, lang, seed, device, safe=False, speed=1.0):
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as f:
         f.write(text)
         tmp = f.name
@@ -260,11 +260,11 @@ def speak(model, voice_dir, text, out, lang, seed, device, fast=False, speed=1.0
         args += ["--model", MODELS[model]["repo"], "--voice-dir", str(voice_dir)]
         if seed is not None:
             args += ["--seed", str(seed)]
-        if fast:
+        if not safe:
             args += ["--no-check"]
         if speed != 1.0:
             args += ["--speed", str(speed)]
-        quiet = cached(MODELS[model]["repo"], "model.safetensors") and (fast or cached(WHISPER_REPO, "model.bin"))
+        quiet = cached(MODELS[model]["repo"], "model.safetensors") and ((not safe) or cached(WHISPER_REPO, "model.bin"))
         if not quiet:
             status("Downloading the voice model (about 4 GB, first time only)...")
         engine(model, args, quiet)
@@ -352,7 +352,7 @@ def make_clip(a, hw, text, lang, voice="", clone=""):
         prepare_voice(model, voice_dir, ref, lang)
         if a.save:
             set_voice_lang(voice_dir, lang)
-    speak(model, voice_dir, text, wav, lang, a.seed, a.device, a.fast, a.speed)
+    speak(model, voice_dir, text, wav, lang, a.seed, a.device, a.safe, a.speed)
     finish_output(wav, out)
     status(f"Saved: {rel(out)}")
 
@@ -465,7 +465,7 @@ def main():
     ap.add_argument("--seed", type=int, help="same seed + same text = same result; change it for a different take")
     ap.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"])
     ap.add_argument("--speed", type=float, default=1.0, metavar="X", help="speaking speed: 1.0 = as the voice speaks, 1.2 = faster, 0.8 = slower (0.5 to 2)")
-    ap.add_argument("--fast", action="store_true", help="skip the check that listens to the result and redoes pieces that do not match the text")
+    ap.add_argument("--safe", action="store_true", help="after speaking, listen to the result and redo pieces that do not match the text (slower)")
     ap.add_argument("-y", "--yes", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--serve", action="store_true", help="run the HTTP voice service instead of generating once")
     ap.add_argument("--host", default="127.0.0.1", help="with --serve: address to listen on (0.0.0.0 = reachable from other computers)")

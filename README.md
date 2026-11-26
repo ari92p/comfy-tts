@@ -37,8 +37,8 @@ easy-tts --voice me --text-file chapter1.txt -o chapter1.wav                   #
 ```
 
 If something is missing, it says what (and lists your saved voices). Results go to `out/` (or where `-o` says).
-Long texts are spoken sentence by sentence, several at a time, and joined. Afterwards the program listens to each sentence again with Whisper
-and makes it again if it does not match the text (the model sometimes repeats a sentence or invents a word).
+Long texts are spoken sentence by sentence, several at a time, and joined. The model sometimes repeats a sentence or invents a word:
+with `--safe` the program listens to each sentence again with Whisper afterwards and makes it again if it does not match the text.
 
 | Option | What it does |
 | --- | --- |
@@ -49,7 +49,7 @@ and makes it again if it does not match the text (the model sometimes repeats a 
 | `--speed 1.2` | speaking speed: 1.0 as the voice speaks, above 1 faster, below 1 slower (0.5 to 2). The model has no speed setting, so this stretches the audio without changing the pitch: fine up to about 1.3, beyond that it starts to sound processed |
 | `--seed N` | same seed and text give the same result; change it for another take |
 | `-o FILE` | output file (`.mp3` and others work if ffmpeg is installed) |
-| `--fast` | skip the listen-back check: much quicker, but a repeated or invented word can stay in |
+| `--safe` | listen back to the result and redo sentences that do not match the text: slower, but a repeated or invented word does not stay in |
 | `--transcribe AUDIO` | voice to text: writes what is said in an audio file to `out/<name>-<time>.txt` (Whisper). Add `--lang de` if you know the language, `-o text.txt` to choose the file |
 | `--list-voices` | show the voices you saved, with their language |
 
@@ -115,7 +115,7 @@ The model is Qwen3-TTS 1.7B Base (Apache-2.0), the largest of its family. It clo
 | Download | When | Size |
 | --- | --- | --- |
 | `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | always | about 4.2 GB |
-| Whisper `large-v3-turbo` | the transcript of your recording and the check of the result | about 1.5 GB |
+| Whisper `large-v3-turbo` | the transcript of your recording, `--transcribe` and `--safe` | about 1.5 GB |
 
 Already have a model? Put its cache folder (e.g. `models--Qwen--Qwen3-TTS-12Hz-1.7B-Base`) into that cache and nothing is downloaded.
 
