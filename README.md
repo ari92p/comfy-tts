@@ -32,6 +32,9 @@ easy-tts --serve                      # http://127.0.0.1:8190
 easy-tts --serve --host 0.0.0.0       # reachable from other computers (no login, use a firewall)
 ```
 
+Or start it with a file, which keeps it running (restarts it if it ends) and listens on port 8190 for other computers:
+Windows: double-click `src\start_server.cmd`. Mac/Linux: `src/start_server.sh`.
+
 ## Voice to text
 
 ```bash
