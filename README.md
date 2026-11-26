@@ -78,8 +78,8 @@ The model is Qwen3-TTS 1.7B Base, the largest of its family. It clones voices; t
 Already have a model? Put its cache folder (e.g. `models--Qwen--Qwen3-TTS-12Hz-1.7B-Base`) into that cache folder and nothing is downloaded.
 
 ## Folders
-saved voices: `voices/`
-results: `out/`
-models: `~/.cache/huggingface/hub` (Windows: `C:\Users\<you>\.cache\huggingface\hub`, or the place `HF_HOME` points to) 
+- saved voices: `voices/`
+- results: `out/`
+- models: `~/.cache/huggingface/hub` (Windows: `C:\Users\<you>\.cache\huggingface\hub`, or the place `HF_HOME` points to)
 
 MIT license. Qwen3-TTS is Apache-2.0, Whisper `large-v3-turbo` is MIT.
